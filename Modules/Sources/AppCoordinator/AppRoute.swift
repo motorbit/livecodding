@@ -3,5 +3,5 @@
 public enum AppRoute: Equatable, Sendable {
     /// Start-up screen; the default initial route.
     case bootstrap
-    case home
+    case taskBoard
 }

@@ -1,5 +1,5 @@
 import BootstrapFeature
-import HomeFeature
+import TaskBoardFeature
 import SwiftUI
 
 /// Maps `coordinator.screen` to a View. App-wide overlays (lock screen, offline banner, debug
@@ -17,8 +17,8 @@ public struct CoordinatorView: View {
                 switch screen {
                 case .bootstrap(let viewModel):
                     BootstrapView(viewModel: viewModel)
-                case .home(let viewModel):
-                    HomeView(viewModel: viewModel)
+                case .taskBoard(let viewModel):
+                    TaskBoardView(viewModel: viewModel)
                 }
             }
             // Overlays go here, each driven by optional state on the coordinator.

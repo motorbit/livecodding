@@ -1,8 +1,8 @@
 import BootstrapFeature
 import Combine
 import Dependencies
-import HomeFeature
 import Logging
+import TaskBoardFeature
 
 /// Composition root. Turns an `AppRoute` into a live `AppScreen`, wires the screen's output events
 /// and runs route-entry effects. Features never import this module (ADR 0002).
@@ -35,12 +35,11 @@ public final class AppCoordinator: ObservableObject {
             let viewModel = withDependencies(from: self) { BootstrapViewModel() }
             viewModel.onEvent = { [weak self] event in self?.handle(event) }
             return .bootstrap(viewModel)
-        case .home:
+        case .taskBoard:
             // `withDependencies(from: self)` gives the child the coordinator's dependency context,
             // so test overrides reach VMs created after `init`.
-            let viewModel = withDependencies(from: self) { HomeViewModel() }
-            viewModel.onEvent = { [weak self] event in self?.handle(event) }
-            return .home(viewModel)
+            let viewModel = withDependencies(from: self) { TaskBoardViewModel() }
+            return .taskBoard(viewModel)
         }
     }
 
@@ -52,7 +51,7 @@ public final class AppCoordinator: ObservableObject {
         switch route {
         case .bootstrap:
             break // Start-up work belongs to BootstrapViewModel.
-        case .home:
+        case .taskBoard:
             break // App-level policy only (session timer, reset, deep-link flush). Features log and track themselves.
         }
     }
@@ -62,14 +61,7 @@ public final class AppCoordinator: ObservableObject {
     private func handle(_ event: BootstrapViewModelEvent) {
         switch event {
         case .finished:
-            navigate(to: .home)
-        }
-    }
-
-    private func handle(_ event: HomeViewModelEvent) {
-        switch event {
-        case .closeRequested:
-            break // Root screen: nothing to close. Replace with real routing when Home emits intents.
+            navigate(to: .taskBoard)
         }
     }
 }

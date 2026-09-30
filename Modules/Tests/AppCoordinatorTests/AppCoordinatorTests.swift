@@ -1,7 +1,7 @@
 import BootstrapFeature
 import Dependencies
-import HomeFeature
 import Logging
+import TaskBoardFeature
 import Testing
 @testable import AppCoordinator
 
@@ -28,9 +28,9 @@ struct AppCoordinatorTests {
     @Test("""
         Given the bootstrap screen,
         When bootstrap finishes,
-        Then the coordinator shows home
+        Then the coordinator shows the Task Board
         """)
-    func bootstrapFinishedNavigatesToHome() {
+    func bootstrapFinishedNavigatesToTaskBoard() {
         let sut = withDependencies {
             makeDependencies(&$0)
         } operation: {
@@ -43,32 +43,32 @@ struct AppCoordinatorTests {
 
         bootstrap.onEvent?(.finished)
 
-        guard case .home? = sut.screen else {
-            Issue.record("Expected .home, got \(String(describing: sut.screen))")
+        guard case .taskBoard? = sut.screen else {
+            Issue.record("Expected .taskBoard, got \(String(describing: sut.screen))")
             return
         }
     }
 
     @Test("""
-        Given a coordinator showing home,
-        When it navigates to home again,
-        Then a fresh Home view model is created
+        Given a coordinator showing the Task Board,
+        When it navigates to the Task Board again,
+        Then a fresh Task Board view model is created
         """)
-    func navigatingToHomeCreatesFreshViewModel() {
+    func navigatingToTaskBoardCreatesFreshViewModel() {
         let sut = withDependencies {
             makeDependencies(&$0)
         } operation: {
-            AppCoordinator(initialRoute: .home)
+            AppCoordinator(initialRoute: .taskBoard)
         }
-        guard case .home(let first)? = sut.screen else {
-            Issue.record("Expected .home")
+        guard case .taskBoard(let first)? = sut.screen else {
+            Issue.record("Expected .taskBoard")
             return
         }
 
-        sut.navigate(to: .home)
+        sut.navigate(to: .taskBoard)
 
-        guard case .home(let second)? = sut.screen else {
-            Issue.record("Expected .home")
+        guard case .taskBoard(let second)? = sut.screen else {
+            Issue.record("Expected .taskBoard")
             return
         }
         #expect(first !== second)
