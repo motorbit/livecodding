@@ -44,7 +44,8 @@ private actor InMemoryTaskService {
             id: UUID(),
             title: try normalizedTitle(draft.title),
             notes: draft.notes,
-            priority: draft.priority
+            priority: draft.priority,
+            dueDate: draft.dueDate
         )
         tasks.append(task)
         return task
@@ -53,7 +54,7 @@ private actor InMemoryTaskService {
     func updateTask(_ task: TaskItem) async throws -> TaskItem {
         try failIfRequested()
         guard let index = tasks.firstIndex(where: { $0.id == task.id }) else {
-            throw TaskClientError.unavailable
+            throw TaskClientError.notFound
         }
 
         var updatedTask = task
@@ -65,19 +66,19 @@ private actor InMemoryTaskService {
     func deleteTask(_ id: UUID) async throws {
         try failIfRequested()
         guard let index = tasks.firstIndex(where: { $0.id == id }) else {
-            throw TaskClientError.unavailable
+            throw TaskClientError.notFound
         }
         tasks.remove(at: index)
     }
 
     private func failIfRequested() throws {
         guard policy.shouldFail() else { return }
-        throw TaskClientError.simulatedFailure
+        throw TaskClientError.unavailable
     }
 
     private func normalizedTitle(_ title: String) throws -> String {
         let title = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !title.isEmpty else { throw TaskClientError.unavailable }
+        guard !title.isEmpty else { throw TaskClientError.validation }
         return title
     }
 }

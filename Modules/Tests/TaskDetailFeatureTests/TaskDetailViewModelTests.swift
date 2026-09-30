@@ -119,7 +119,7 @@ struct TaskDetailViewModelTests {
             makeDependencies(&$0)
             $0.taskClient.updateTask = { _ in
                 let call = calls.withValue { $0 += 1; return $0 }
-                if call == 1 { throw TaskClientError.simulatedFailure }
+                if call == 1 { throw TaskClientError.unavailable }
                 return updatedTask
             }
         } operation: {
@@ -198,7 +198,7 @@ struct TaskDetailViewModelTests {
             makeDependencies(&$0)
             $0.taskClient.deleteTask = { _ in
                 let call = calls.withValue { $0 += 1; return $0 }
-                if call == 1 { throw TaskClientError.simulatedFailure }
+                if call == 1 { throw TaskClientError.unavailable }
             }
         } operation: {
             TaskDetailViewModel(state: TaskDetailViewState(task: task))

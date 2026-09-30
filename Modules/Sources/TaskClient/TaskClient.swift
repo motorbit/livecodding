@@ -14,19 +14,23 @@ public struct TaskItem: Identifiable, Codable, Equatable, Sendable {
     public var notes: String
     public var priority: TaskPriority
     public var isComplete: Bool
+    /// A calendar day, stored as 00:00 UTC of that day. Transferred as `yyyy-MM-dd`.
+    public var dueDate: Date?
 
     public init(
         id: UUID,
         title: String,
         notes: String = "",
         priority: TaskPriority,
-        isComplete: Bool = false
+        isComplete: Bool = false,
+        dueDate: Date? = nil
     ) {
         self.id = id
         self.title = title
         self.notes = notes
         self.priority = priority
         self.isComplete = isComplete
+        self.dueDate = dueDate
     }
 }
 
@@ -34,17 +38,29 @@ public struct TaskDraft: Equatable, Sendable {
     public var title: String
     public var notes: String
     public var priority: TaskPriority
+    /// Same convention as `TaskItem.dueDate`.
+    public var dueDate: Date?
 
-    public init(title: String, notes: String = "", priority: TaskPriority = .medium) {
+    public init(
+        title: String,
+        notes: String = "",
+        priority: TaskPriority = .medium,
+        dueDate: Date? = nil
+    ) {
         self.title = title
         self.notes = notes
         self.priority = priority
+        self.dueDate = dueDate
     }
 }
 
 public enum TaskClientError: Error, Equatable, Sendable {
+    /// The request was rejected, e.g. a blank title (HTTP 400).
+    case validation
+    /// The task doesn't exist (HTTP 404).
+    case notFound
+    /// The service failed or returned an unreadable response (HTTP 5xx, transport, decoding).
     case unavailable
-    case simulatedFailure
 }
 
 @DependencyClient
@@ -65,7 +81,8 @@ extension TaskClient: DependencyKey {
                 id: UUID(),
                 title: draft.title,
                 notes: draft.notes,
-                priority: draft.priority
+                priority: draft.priority,
+                dueDate: draft.dueDate
             )
         },
         updateTask: { $0 },

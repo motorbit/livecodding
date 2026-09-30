@@ -134,7 +134,7 @@ Source: the review of the project against the challenge brief, plus spec revisio
 - `python3 .github/skills/ios-project-bootstrap/scripts/sync_test_plan.py Livecodding.xctestplan --prune`.
 - Gate: package builds.
 
-### 2. Model + DTOs — `feat(TaskClient): add due date and DTO mapping`
+### 2. ✅ Model + DTOs — `feat(TaskClient): add due date and DTO mapping`
 - `TaskItem.dueDate: Date?` (a calendar day, stored at start of day in UTC); `TaskDraft.dueDate: Date?`.
 - `TaskDTO` / `TaskDraftDTO` (Codable, snake_case keys, `"Low"|"Medium"|"High"` priority, `done`, `due_date` as `yyyy-MM-dd`) with `init(_ item:)` / `toDomain()`.
 - `TaskClientError`: `.validation`, `.notFound`, `.unavailable` (drop `.simulatedFailure`; 503 → `.unavailable`).
