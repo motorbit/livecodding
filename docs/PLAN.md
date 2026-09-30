@@ -13,7 +13,7 @@
 | `DesignSystem` | UI | — | existing module | asset colors, system typography, spacing/radius tokens, components |
 | `Logging` | client | Swift `Dependencies` and `DependenciesMacros` products | existing module | Existing logger |
 | `L10n` | leaf | — | existing module | Add Task Board, Add Task, and Task Detail accessors/catalog entries |
-| `NetworkClient` | client | Swift `Dependencies` product | existing module | Retain from scaffold; not used by the mock TaskClient |
+| `NetworkClient` | client | Swift `Dependencies` product | existing module | Retained as scaffold for a future real backend; unused |
 
 Remove the unused scaffold `HomeFeature` source/test targets and replace the `.home` coordinator route with `.taskBoard`. Keep Bootstrap as the initial route and route `.finished` to `.taskBoard`. The app and package deployment minimum is iOS 17.0; UI state observation follows the existing Combine `ObservableObject` / `@Published` pattern.
 
@@ -121,7 +121,7 @@ Source: the review of the project against the challenge brief, plus spec revisio
 
 | Module | Change |
 |---|---|
-| `TaskClient` | Now depends on `NetworkClient`; adds `resources: [.process("Resources")]` for `seed-tasks.json` |
+| `TaskClient` | Adds `resources: [.process("Resources")]` for `seed-tasks.json`; no new module dependencies |
 | `HomeFeature` | Removed (source, tests, `Module` case, `uiModule` entry) |
 | `TaskBoardFeature` | No new modules; uses `\.continuousClock`, `\.date`, `\.calendar`, `\.locale` |
 | `AddTaskFeature`, `TaskDetailFeature` | No new modules |
@@ -140,18 +140,14 @@ Source: the review of the project against the challenge brief, plus spec revisio
 - `TaskClientError`: `.validation`, `.notFound`, `.unavailable` (drop `.simulatedFailure`; 503 → `.unavailable`).
 - Tests: DTO round-trip, priority string mapping, date-only encoding, decoding the verbatim challenge JSON.
 
-### 3. Mock HTTP server — `feat(TaskClient): add MockTaskServer`
-- `MockTaskServerPolicy` (the former `TaskClientLivePolicy`): `readDelay` 300–800 ms, `writeDelay` 100–300 ms, `wait`, `shouldFail` (15 %).
-- `actor MockTaskServer { func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) }`: routes by method + path, as in the SPEC REST table. Unknown route → 404; blank title → 400; failure → 503 with an empty body. Seeds are loaded from `Resources/seed-tasks.json` with stable IDs `…0001`–`…0004`.
-- Tests (policy injected, no sleeps): each route's success/status/body, 400/404/503, correct read vs write delay passed to `wait`, seeds match the challenge.
+### 3. ✅ Mock network layer + repository — `feat(TaskClient): add mock network layer`
+- `TaskNetworkClient` (`@DependencyClient`, internal): DTO-level CRUD, throws `TaskNetworkError` (`.badRequest`, `.notFound`, `.serverError`). `liveValue = .mock(policy: .live)` (the single swap point for a real backend), `previewValue = .mock(policy: .instant)`, `testValue` unimplemented.
+- `MockNetworkPolicy`: `readDelay` 300–800 ms, `writeDelay` 100–300 ms, `wait`, `shouldFail` (15 %); `.instant` for previews/tests.
+- `actor MockNetworkClient`: seeds from `Resources/seed-tasks.json` (verbatim challenge JSON) with stable IDs `…0001`–`…0004`; assigns IDs, trims and validates titles, throws `.notFound`.
+- `TaskClient.repository` (live + preview): resolves `\.taskNetworkClient` per call; DTO ↔ domain; `TaskNetworkError` → `TaskClientError`; `CancellationError` passes through. The old `InMemoryTaskService` is deleted.
+- Tests: seeds == `TaskItem.samples`, read vs write delays, CRUD order/normalization, 400/404-style errors, failures don't mutate; repository round-trip, error mapping, malformed response, cancellation.
 
-### 4. Repository — `refactor(TaskClient): route live client through NetworkClient`
-- `TaskAPI` endpoints (`Endpoint<[TaskDTO]>`, …) with base URL `https://mock.taskboard.local/api`.
-- `TaskClient.live(server:)` → `NetworkClient(send: server.send)` → `send(endpoint:)` → DTO → domain; map `NetworkError` status 400/404/other to `TaskClientError`.
-- Delete the old `InMemoryTaskService`.
-- `previewValue` unchanged; `testValue` stays unimplemented.
-- Tests: CRUD end-to-end through the real server with a deterministic policy; error mapping.
-- Features must compile unchanged, apart from `.simulatedFailure` references in tests.
+### 4. ~~Repository over NetworkClient~~ — merged into step 3.
 
 ### 5. Async refresh — `feat(TaskBoardFeature): await pull-to-refresh`
 - `public func refresh() async { trigger(.refreshRequested); await loadTask?.value }`; the View uses `.refreshable { await viewModel.refresh() }`.
@@ -179,7 +175,7 @@ Source: the review of the project against the challenge brief, plus spec revisio
 - Tests: formatting boundaries (today / tomorrow / yesterday / N days), overdue flag, add/edit/clear due date, dirty detection.
 
 ### 9. Docs + gates — `docs: align README, AGENTS and SPEC`
-- Update the `TaskClient`, `TaskBoardFeature`, `AddTaskFeature` and `TaskDetailFeature` READMEs. Update the AGENTS.md Module map (TaskClient purpose; `NetworkClient` is now used). Fix PLAN Phase 1's `NetworkClient` row.
+- Update the `TaskClient`, `TaskBoardFeature`, `AddTaskFeature` and `TaskDetailFeature` READMEs. Update the AGENTS.md Module map (TaskClient purpose; `NetworkClient` is unused scaffold).
 - Add L10n entries (sort, search, undo, row delete error, due-date strings) to the String Catalog.
 - Run package tests + the app build on the iPhone 18 Pro Max simulator (authorized by the SPEC).
 - Run the `ios-reviewer` agent on the changed files and fix the ❌ findings.
@@ -187,4 +183,4 @@ Source: the review of the project against the challenge brief, plus spec revisio
 ## Risks / notes
 - `List` + `.swipeActions` changes row layout and hit-testing: re-check the 44-pt completion button inside the row (`.buttonStyle(.plain)` prevents whole-row taps).
 - The deferred swipe delete is optimistic by design (SPEC R2). The detail delete stays pessimistic.
-- Walk-through talking points: why a fake HTTP server (a realistic seam, where only `send` gets swapped) and why iOS 17 (satisfies 16+).
+- Walk-through talking points: why a DTO-level mock network client (one swap point: `TaskNetworkClient.liveValue`; the repository maps DTOs/errors) and why iOS 17 (satisfies 16+).

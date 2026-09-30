@@ -26,8 +26,8 @@ Rules for AI agents and developers working in this repository. The **HARD RULES*
 | `DesignSystem` | UI (MainActor) | Color/typography/spacing tokens, basic components |
 | `Logging` | client | `LoggingClient` (`\.logger`), an os.Logger wrapper |
 | `L10n` | leaf | String Catalog + typed accessors |
-| `NetworkClient` | client | HTTP transport + middlewares (REST; a GraphQL client may live here too) |
-| `TaskClient` | client | Async in-memory task CRUD mock used by Task Board features |
+| `NetworkClient` | client | HTTP transport + middlewares; scaffold for a future real backend, currently unused |
+| `TaskClient` | client | Task repository (`TaskClient`) over the internal `TaskNetworkClient` boundary; live network = `MockNetworkClient` (latency, failures) |
 
 <!-- Delete rows for modules the project doesn't have. Add every new module here. -->
 
