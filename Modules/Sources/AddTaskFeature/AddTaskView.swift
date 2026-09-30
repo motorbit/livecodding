@@ -114,5 +114,6 @@ public struct AddTaskView: View {
         }
         .background(Color.dsBackground)
         .disabled(viewModel.state.isSaving)
+        .interactiveDismissDisabled(viewModel.state.isSaving)
     }
 }

@@ -45,6 +45,7 @@ Rows show `dueText`/`isOverdue`, built in `rebuildRows()` from `\.date.now` + `\
 today → `DueDay`) and `\.locale` (plural rules): "Due today", "Due tomorrow", "Due in N days";
 past days show "Overdue by N days" (error color) for incomplete tasks and "Due yesterday" /
 "Due N days ago" for completed ones. `\.date` is read only when a visible task has a due date.
+`.dayMayHaveChanged` (scene becomes active, or `significantTimeChangeNotification`) recomputes it.
 
 ## Swipe to delete with undo
 
@@ -69,6 +70,9 @@ the stored `loadTask`, following any restarted load, so the spinner stays until 
 state. It's the only async VM entry point (ADR 0003 exception).
 
 ## Gotchas
+
+- A row with a request in flight can't open detail (detail would save a stale snapshot); a
+  successful row delete pops detail if it shows that task.
 
 - Strings come from `L10n.TaskBoard` (discard confirmation reuses `L10n.TaskDetail`).
 - Task contents are never logged.
