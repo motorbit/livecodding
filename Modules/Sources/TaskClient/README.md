@@ -36,3 +36,4 @@ An actor seeded from `Resources/seed-tasks.json` (the challenge examples, stable
 ## Wire format
 
 `TaskDTO` = `{ id, title, notes, priority: "Low"|"Medium"|"High", done, due_date? }`. `due_date` is a UTC `yyyy-MM-dd` calendar day; `TaskItem.dueDate` stores it as 00:00 UTC.
+`DueDay` (public) maps the local today to that day, snaps picker dates, and counts days between due days.

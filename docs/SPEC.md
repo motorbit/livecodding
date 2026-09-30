@@ -57,7 +57,7 @@ None. `MockNetworkClient`'s in-memory state is the source of truth for the curre
 - Priority is never communicated by color alone: the badge includes its text and an accessible label. Completion controls, retry, Save and Delete have clear VoiceOver labels.
 - Support Dynamic Type and maintain a minimum 44-point interactive target.
 - Error copy and empty-state copy are localized via `L10n`, never hardcoded in feature Views.
-- Relative due-date text is formatted in the VM with the injected `\.date`, `\.calendar` and `\.locale` dependencies (never in Views), so tests are deterministic.
+- Relative due-date text is formatted in the VM with the injected `\.date`, `\.calendar` and `\.locale` dependencies (never in Views), so tests are deterministic. Date pickers display in UTC (`DueDay.timeZone`) so the edited value is the canonical due day.
 
 ## Localization
 

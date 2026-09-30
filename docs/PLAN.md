@@ -169,7 +169,7 @@ Source: the review of the project against the challenge brief, plus spec revisio
 - View: `.searchable(text: Binding(get: state.searchText, set: trigger))`, toolbar `Menu` with a `Picker` over `state.sortOptions` (labels from L10n).
 - Tests: filter case/diacritics/trim, each sort with stable ties, search + sort combined, no-results vs empty, interaction with add/delete/complete.
 
-### 8. Due dates — `feat: due dates with relative formatting`
+### 8. ✅ Due dates — `feat: due dates with relative formatting`
 - AddTask and TaskDetail: `hasDueDate` toggle + date-only `DatePicker`; dirty-state comparison includes `dueDate`; the draft carries it.
 - Board rows: `dueText: String?`, `isOverdue: Bool`, produced in the VM from `\.date.now`, `\.calendar`, `\.locale`: "Due today", "Due tomorrow", "Due in 3 days", "Overdue by 2 days" (L10n plural/format entries). Completed tasks show plain "Due …" without overdue styling.
 - Tests: formatting boundaries (today / tomorrow / yesterday / N days), overdue flag, add/edit/clear due date, dirty detection.

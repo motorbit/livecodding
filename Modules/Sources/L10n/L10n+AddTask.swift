@@ -11,6 +11,12 @@ public extension L10n {
         public static var titlePlaceholder: String {
             String(localized: "addTask.titlePlaceholder", defaultValue: "What needs to be done?", bundle: .module)
         }
+        public static var dueDateToggle: String {
+            String(localized: "addTask.dueDate.toggle", defaultValue: "Add due date", bundle: .module)
+        }
+        public static var dueDateLabel: String {
+            String(localized: "addTask.dueDate.label", defaultValue: "Due date", bundle: .module)
+        }
         public static var notesLabel: String {
             String(localized: "addTask.notesLabel", defaultValue: "Notes (optional)", bundle: .module)
         }

@@ -2,6 +2,12 @@ import Foundation
 
 public extension L10n {
     enum TaskDetail {
+        public static var dueDateToggle: String {
+            String(localized: "taskDetail.dueDate.toggle", defaultValue: "Due date", bundle: .module)
+        }
+        public static var dueDateLabel: String {
+            String(localized: "taskDetail.dueDate.label", defaultValue: "Date", bundle: .module)
+        }
         public static var title: String {
             String(localized: "taskDetail.title", defaultValue: "Task Details", bundle: .module)
         }

@@ -163,3 +163,79 @@ private actor CreateTaskSpy {
 private func makeDependencies(_ dependencies: inout DependencyValues) {
     dependencies.taskClient = TaskClient()
 }
+
+@MainActor
+struct AddTaskDueDateTests {
+    // 2025-03-10 23:30 in Los Angeles (already 2025-03-11 in UTC).
+    private let now = try! Date("2025-03-11T06:30:00Z", strategy: .iso8601)
+
+    private func utcDay(_ day: String) -> Date {
+        try! Date("\(day)T00:00:00Z", strategy: .iso8601)
+    }
+
+    private func makeSUT(spy: CreateTaskSpy) -> AddTaskViewModel {
+        withDependencies {
+            makeDependencies(&$0)
+            $0.date.now = now
+            var calendar = Calendar(identifier: .gregorian)
+            calendar.timeZone = TimeZone(identifier: "America/Los_Angeles")!
+            $0.calendar = calendar
+            $0.taskClient.createTask = { try await spy.createTask($0) }
+        } operation: { AddTaskViewModel() }
+    }
+
+    @Test("""
+        Given the Add form,
+        When the due-date toggle is turned on,
+        Then the date defaults to the local today as a UTC day
+        """)
+    func toggleOnDefaultsToLocalToday() {
+        let sut = makeSUT(spy: CreateTaskSpy(responses: []))
+
+        sut.trigger(.dueDateToggled(true))
+
+        #expect(sut.state.hasDueDate)
+        #expect(sut.state.dueDate == utcDay("2025-03-10"))
+    }
+
+    @Test("""
+        Given a picked due date,
+        When Save succeeds,
+        Then the draft carries the normalized UTC day
+        """)
+    func savedDraftCarriesDueDate() async {
+        let spy = CreateTaskSpy(responses: [.success(TaskItem(id: UUID(), title: "T", priority: .medium))])
+        let sut = makeSUT(spy: spy)
+
+        sut.trigger(.titleChanged("T"))
+        sut.trigger(.dueDateToggled(true))
+        sut.trigger(.dueDateChanged(try! Date("2025-04-02T13:00:00Z", strategy: .iso8601)))
+        sut.trigger(.saveTapped)
+        await sut.saveTask?.value
+
+        #expect(await spy.receivedDrafts() == [
+            TaskDraft(title: "T", priority: .medium, dueDate: utcDay("2025-04-02")),
+        ])
+    }
+
+    @Test("""
+        Given a due date was set,
+        When the toggle is turned off and Save succeeds,
+        Then no due date is sent and later picker changes are ignored
+        """)
+    func toggleOffClearsDueDate() async {
+        let spy = CreateTaskSpy(responses: [.success(TaskItem(id: UUID(), title: "T", priority: .medium))])
+        let sut = makeSUT(spy: spy)
+
+        sut.trigger(.titleChanged("T"))
+        sut.trigger(.dueDateToggled(true))
+        sut.trigger(.dueDateToggled(false))
+        sut.trigger(.dueDateChanged(utcDay("2025-04-02")))
+        #expect(sut.state.dueDate == nil)
+
+        sut.trigger(.saveTapped)
+        await sut.saveTask?.value
+
+        #expect(await spy.receivedDrafts() == [TaskDraft(title: "T", priority: .medium)])
+    }
+}

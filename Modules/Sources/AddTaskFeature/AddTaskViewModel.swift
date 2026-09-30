@@ -1,5 +1,6 @@
 import Combine
 import Dependencies
+import Foundation
 import L10n
 import TaskClient
 
@@ -8,6 +9,8 @@ public final class AddTaskViewModel: ObservableObject {
     public var onEvent: ((AddTaskViewModelEvent) -> Void)?
 
     @Dependency(\.taskClient) private var taskClient
+    @Dependency(\.date) private var date
+    @Dependency(\.calendar) private var calendar
 
     var saveTask: Task<Void, Never>?
     private var saveGeneration = 0
@@ -30,6 +33,15 @@ public final class AddTaskViewModel: ObservableObject {
             clearError()
         case .priorityChanged(let priority):
             state.priority = priority
+            clearError()
+        case .dueDateToggled(let isOn):
+            guard isOn != state.hasDueDate else { return }
+            state.hasDueDate = isOn
+            state.dueDate = isOn ? DueDay.day(containing: date.now, in: calendar) : nil
+            clearError()
+        case .dueDateChanged(let dueDate):
+            guard state.hasDueDate else { return }
+            state.dueDate = DueDay.normalized(dueDate)
             clearError()
         case .saveTapped, .retryTapped:
             save()
@@ -67,7 +79,7 @@ public final class AddTaskViewModel: ObservableObject {
             return
         }
 
-        let draft = TaskDraft(title: title, notes: state.notes, priority: state.priority)
+        let draft = TaskDraft(title: title, notes: state.notes, priority: state.priority, dueDate: state.dueDate)
         let taskClient = taskClient
         saveTask?.cancel()
         saveGeneration += 1

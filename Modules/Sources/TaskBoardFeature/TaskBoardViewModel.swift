@@ -13,6 +13,9 @@ public final class TaskBoardViewModel: ObservableObject {
 
     @Dependency(\.taskClient) private var taskClient
     @Dependency(\.continuousClock) private var clock
+    @Dependency(\.date) private var date
+    @Dependency(\.calendar) private var calendar
+    @Dependency(\.locale) private var locale
 
     static let undoWindow: Duration = .seconds(4)
 
@@ -419,7 +422,13 @@ public final class TaskBoardViewModel: ObservableObject {
             query.isEmpty || item.title.localizedStandardContains(query)
         }
         state.isNoResults = !tasks.isEmpty && visible.isEmpty
+        let today = visible.contains { $0.dueDate != nil }
+            ? DueDay.day(containing: date.now, in: calendar)
+            : nil
         state.rows = visible.map { item in
+            let due = today.flatMap { today in
+                item.dueDate.map { dueDescription(for: $0, isComplete: item.isComplete, today: today) }
+            }
             let errorMessage: String?
             switch rowStatus[item.id] {
             case .completionFailed?:
@@ -440,8 +449,33 @@ public final class TaskBoardViewModel: ObservableObject {
                 completionAccessibilityLabel: item.isComplete
                     ? L10n.TaskBoard.markIncomplete
                     : L10n.TaskBoard.markComplete,
-                errorMessage: errorMessage
+                errorMessage: errorMessage,
+                dueText: due?.text,
+                isOverdue: due?.isOverdue ?? false
             )
+        }
+    }
+
+    private func dueDescription(
+        for dueDate: Date,
+        isComplete: Bool,
+        today: Date
+    ) -> (text: String, isOverdue: Bool) {
+        let days = DueDay.days(from: today, to: dueDate)
+        switch days {
+        case 0:
+            return (L10n.TaskBoard.dueToday, false)
+        case 1:
+            return (L10n.TaskBoard.dueTomorrow, false)
+        case 2...:
+            return (L10n.TaskBoard.dueInDays(days, locale: locale), false)
+        default:
+            if !isComplete {
+                return (L10n.TaskBoard.overdueByDays(-days, locale: locale), true)
+            }
+            return days == -1
+                ? (L10n.TaskBoard.dueYesterday, false)
+                : (L10n.TaskBoard.dueDaysAgo(-days, locale: locale), false)
         }
     }
 

@@ -21,6 +21,10 @@ public struct TaskBoardRowState: Equatable, Identifiable {
     public var completionAccessibilityLabel: String
     /// Inline error for the row's last failed operation; Retry sends `.rowRetryTapped`.
     public var errorMessage: String?
+    /// Relative due-date line, e.g. "Due tomorrow"; `nil` when the task has no due date.
+    public var dueText: String?
+    /// Incomplete and past due; the View uses the error color (the text also says "Overdue").
+    public var isOverdue: Bool
 
     public init(
         id: UUID,
@@ -31,7 +35,9 @@ public struct TaskBoardRowState: Equatable, Identifiable {
         isComplete: Bool,
         isInFlight: Bool,
         completionAccessibilityLabel: String,
-        errorMessage: String?
+        errorMessage: String?,
+        dueText: String? = nil,
+        isOverdue: Bool = false
     ) {
         self.id = id
         self.title = title
@@ -42,6 +48,8 @@ public struct TaskBoardRowState: Equatable, Identifiable {
         self.isInFlight = isInFlight
         self.completionAccessibilityLabel = completionAccessibilityLabel
         self.errorMessage = errorMessage
+        self.dueText = dueText
+        self.isOverdue = isOverdue
     }
 }
 
