@@ -56,24 +56,7 @@ public struct TaskClient: Sendable {
 }
 
 extension TaskClient: DependencyKey {
-    public static let liveValue = TaskClient(
-        fetchTasks: {
-            reportIssue("TaskClient live implementation is not configured")
-            throw TaskClientError.unavailable
-        },
-        createTask: { _ in
-            reportIssue("TaskClient live implementation is not configured")
-            throw TaskClientError.unavailable
-        },
-        updateTask: { _ in
-            reportIssue("TaskClient live implementation is not configured")
-            throw TaskClientError.unavailable
-        },
-        deleteTask: { _ in
-            reportIssue("TaskClient live implementation is not configured")
-            throw TaskClientError.unavailable
-        }
-    )
+    public static let liveValue = TaskClient.live()
 
     public static let previewValue = TaskClient(
         fetchTasks: { TaskItem.samples },
