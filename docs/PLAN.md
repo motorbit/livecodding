@@ -110,3 +110,81 @@ Workers return exact keys and base English values for their `L10n+<Feature>.swif
 - `addTask.*`: title, title/notes/priority fields, save/cancel, validation and save error/retry.
 - `taskDetail.*`: navigation title, fields, save/delete, delete confirmation, discard confirmation and inline save/delete errors.
 - Reuse existing common cancel/retry/error strings when they match; do not duplicate keys.
+
+---
+
+# Phase 2 — Challenge alignment plan (2026-09-30)
+
+Source: the review of the project against the challenge brief, plus spec revision R1–R6. Each step is one local commit; don't push. Mark items done as you go.
+
+## Dependency changes
+
+| Module | Change |
+|---|---|
+| `TaskClient` | Now depends on `NetworkClient`; adds `resources: [.process("Resources")]` for `seed-tasks.json` |
+| `HomeFeature` | Removed (source, tests, `Module` case, `uiModule` entry) |
+| `TaskBoardFeature` | No new modules; uses `\.continuousClock`, `\.date`, `\.calendar`, `\.locale` |
+| `AddTaskFeature`, `TaskDetailFeature` | No new modules |
+
+## Steps
+
+### 1. Cleanup — `chore: remove unused HomeFeature`
+- Delete `Sources/HomeFeature`, `Tests/HomeFeatureTests`, the `.homeFeature` case and its `uiModule(...)` block in `Package.swift`.
+- Delete the empty `Tests/AddTaskFeatureTests/AddTaskFeatureTests.swift`.
+- `python3 .github/skills/ios-project-bootstrap/scripts/sync_test_plan.py Livecodding.xctestplan --prune`.
+- Gate: package builds.
+
+### 2. Model + DTOs — `feat(TaskClient): add due date and DTO mapping`
+- `TaskItem.dueDate: Date?` (a calendar day, stored at start of day in UTC); `TaskDraft.dueDate: Date?`.
+- `TaskDTO` / `TaskDraftDTO` (Codable, snake_case keys, `"Low"|"Medium"|"High"` priority, `done`, `due_date` as `yyyy-MM-dd`) with `init(_ item:)` / `toDomain()`.
+- `TaskClientError`: `.validation`, `.notFound`, `.unavailable` (drop `.simulatedFailure`; 503 → `.unavailable`).
+- Tests: DTO round-trip, priority string mapping, date-only encoding, decoding the verbatim challenge JSON.
+
+### 3. Mock HTTP server — `feat(TaskClient): add MockTaskServer`
+- `MockTaskServerPolicy` (the former `TaskClientLivePolicy`): `readDelay` 300–800 ms, `writeDelay` 100–300 ms, `wait`, `shouldFail` (15 %).
+- `actor MockTaskServer { func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) }`: routes by method + path, as in the SPEC REST table. Unknown route → 404; blank title → 400; failure → 503 with an empty body. Seeds are loaded from `Resources/seed-tasks.json` with stable IDs `…0001`–`…0004`.
+- Tests (policy injected, no sleeps): each route's success/status/body, 400/404/503, correct read vs write delay passed to `wait`, seeds match the challenge.
+
+### 4. Repository — `refactor(TaskClient): route live client through NetworkClient`
+- `TaskAPI` endpoints (`Endpoint<[TaskDTO]>`, …) with base URL `https://mock.taskboard.local/api`.
+- `TaskClient.live(server:)` → `NetworkClient(send: server.send)` → `send(endpoint:)` → DTO → domain; map `NetworkError` status 400/404/other to `TaskClientError`.
+- Delete the old `InMemoryTaskService`.
+- `previewValue` unchanged; `testValue` stays unimplemented.
+- Tests: CRUD end-to-end through the real server with a deterministic policy; error mapping.
+- Features must compile unchanged, apart from `.simulatedFailure` references in tests.
+
+### 5. Async refresh — `feat(TaskBoardFeature): await pull-to-refresh`
+- `public func refresh() async { trigger(.refreshRequested); await loadTask?.value }`; the View uses `.refreshable { await viewModel.refresh() }`.
+- Remove `.refreshRequested` from the View's direct use (it stays internal to `refresh()`).
+- ADR 0003: add an "Exception: async refresh for `.refreshable`" note; AGENTS.md R7: add one line referencing it.
+- Tests: `refresh()` returns only after the load is handled; a superseded load still resolves.
+
+### 6. List + swipe-delete with undo — `feat(TaskBoardFeature): swipe to delete with undo`
+- Switch `ScrollView/LazyVStack` to `List` (plain style, DS row insets, separators matching `DSDivider`).
+- `.swipeActions(edge: .trailing) { Button(role: .destructive) → .deleteSwiped(id) }`.
+- VM: `pendingDeletion: (item, index, generation)?`, `undoTask` using `@Dependency(\.continuousClock)`, sleeping 4 s → `.commitDeletion`. Events: `.deleteSwiped`, `.undoTapped`, `.deleteRetryTapped(id)`. A second swipe commits the previous one first. Reloads filter the pending id. Failure restores the row at its index with `rowErrorMessage` and Retry (generalize `completionErrorMessage` into a row error + retry kind).
+- State: `undoBanner: UndoBannerState?` (message + button title from L10n).
+- Tests (`TestClock`): undo within the window → no delete call; expiry → delete once; failure → restored with error; retry; second swipe commits the first; reload while pending.
+
+### 7. Search + sort — `feat(TaskBoardFeature): search and sort`
+- Events `.searchTextChanged(String)` and `.sortChanged(TaskSortOrder)`; `TaskSortOrder: CaseIterable { case default, priority, status }` in the feature.
+- `rebuildRows()` = stable-sort by order → filter by the normalized query (`localizedStandardContains` after trim).
+- `phase` remains data-driven; the new `isNoResults` flag / "No matching tasks" view appears when tasks exist but none match.
+- View: `.searchable(text: Binding(get: state.searchText, set: trigger))`, toolbar `Menu` with a `Picker` over `state.sortOptions` (labels from L10n).
+- Tests: filter case/diacritics/trim, each sort with stable ties, search + sort combined, no-results vs empty, interaction with add/delete/complete.
+
+### 8. Due dates — `feat: due dates with relative formatting`
+- AddTask and TaskDetail: `hasDueDate` toggle + date-only `DatePicker`; dirty-state comparison includes `dueDate`; the draft carries it.
+- Board rows: `dueText: String?`, `isOverdue: Bool`, produced in the VM from `\.date.now`, `\.calendar`, `\.locale`: "Due today", "Due tomorrow", "Due in 3 days", "Overdue by 2 days" (L10n plural/format entries). Completed tasks show plain "Due …" without overdue styling.
+- Tests: formatting boundaries (today / tomorrow / yesterday / N days), overdue flag, add/edit/clear due date, dirty detection.
+
+### 9. Docs + gates — `docs: align README, AGENTS and SPEC`
+- Update the `TaskClient`, `TaskBoardFeature`, `AddTaskFeature` and `TaskDetailFeature` READMEs. Update the AGENTS.md Module map (TaskClient purpose; `NetworkClient` is now used). Fix PLAN Phase 1's `NetworkClient` row.
+- Add L10n entries (sort, search, undo, row delete error, due-date strings) to the String Catalog.
+- Run package tests + the app build on the iPhone 18 Pro Max simulator (authorized by the SPEC).
+- Run the `ios-reviewer` agent on the changed files and fix the ❌ findings.
+
+## Risks / notes
+- `List` + `.swipeActions` changes row layout and hit-testing: re-check the 44-pt completion button inside the row (`.buttonStyle(.plain)` prevents whole-row taps).
+- The deferred swipe delete is optimistic by design (SPEC R2). The detail delete stays pessimistic.
+- Walk-through talking points: why a fake HTTP server (a realistic seam, where only `send` gets swapped) and why iOS 17 (satisfies 16+).
