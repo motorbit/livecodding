@@ -14,7 +14,11 @@ struct TaskDetailViewModelTests {
         """)
     func stateStartsWithSelectedTaskFields() {
         let task = sampleTask()
-        let sut = makeViewModel(task: task)
+        let sut = withDependencies {
+            makeDependencies(&$0)
+        } operation: {
+            TaskDetailViewModel(state: TaskDetailViewState(task: task))
+        }
 
         #expect(sut.state.task == task)
         #expect(sut.state.title == task.title)
@@ -30,16 +34,21 @@ struct TaskDetailViewModelTests {
         Then dirty output is emitted only when the draft crosses the clean boundary
         """)
     func editsEmitDirtyTransitions() {
-        let sut = makeViewModel(task: sampleTask())
+        let task = sampleTask()
+        let sut = withDependencies {
+            makeDependencies(&$0)
+        } operation: {
+            TaskDetailViewModel(state: TaskDetailViewState(task: task))
+        }
         var events: [TaskDetailViewModelEvent] = []
         sut.onEvent = { events.append($0) }
 
         sut.trigger(.titleChanged("Updated title"))
         sut.trigger(.notesChanged("Updated notes"))
-        sut.trigger(.titleChanged(sampleTask().title))
+        sut.trigger(.titleChanged(task.title))
         #expect(sut.state.isDirty)
 
-        sut.trigger(.notesChanged(sampleTask().notes))
+        sut.trigger(.notesChanged(task.notes))
         #expect(sut.state.isDirty == false)
         #expect(events == [.dirtyChanged(true), .dirtyChanged(false)])
     }
@@ -66,7 +75,7 @@ struct TaskDetailViewModelTests {
                 return updatedTask
             }
         } operation: {
-            TaskDetailViewModel(task: task)
+            TaskDetailViewModel(state: TaskDetailViewState(task: task))
         }
         var events: [TaskDetailViewModelEvent] = []
         sut.onEvent = { events.append($0) }
@@ -114,7 +123,7 @@ struct TaskDetailViewModelTests {
                 return updatedTask
             }
         } operation: {
-            TaskDetailViewModel(task: task)
+            TaskDetailViewModel(state: TaskDetailViewState(task: task))
         }
         var events: [TaskDetailViewModelEvent] = []
         sut.onEvent = { events.append($0) }
@@ -156,7 +165,7 @@ struct TaskDetailViewModelTests {
                 deletedIDs.withValue { $0.append(id) }
             }
         } operation: {
-            TaskDetailViewModel(task: task)
+            TaskDetailViewModel(state: TaskDetailViewState(task: task))
         }
         var events: [TaskDetailViewModelEvent] = []
         sut.onEvent = { events.append($0) }
@@ -192,7 +201,7 @@ struct TaskDetailViewModelTests {
                 if call == 1 { throw TaskClientError.simulatedFailure }
             }
         } operation: {
-            TaskDetailViewModel(task: task)
+            TaskDetailViewModel(state: TaskDetailViewState(task: task))
         }
         var events: [TaskDetailViewModelEvent] = []
         sut.onEvent = { events.append($0) }
@@ -214,14 +223,6 @@ struct TaskDetailViewModelTests {
         #expect(sut.state.task == task)
         #expect(sut.state.inlineErrorMessage == nil)
         #expect(events == [.deleted(task.id)])
-    }
-}
-
-private func makeViewModel(task: TaskItem) -> TaskDetailViewModel {
-    withDependencies {
-        makeDependencies(&$0)
-    } operation: {
-        TaskDetailViewModel(task: task)
     }
 }
 

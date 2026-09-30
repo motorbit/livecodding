@@ -19,8 +19,8 @@ public final class TaskDetailViewModel: ObservableObject {
         case delete
     }
 
-    public init(task: TaskItem) {
-        self.state = TaskDetailViewState(task: task)
+    public init(state: TaskDetailViewState) {
+        self.state = state
     }
 
     deinit {
