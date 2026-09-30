@@ -24,6 +24,13 @@ public struct TaskBoardView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color.dsBackground)
+            .safeAreaInset(edge: .bottom) {
+                if let undo = viewModel.state.undo {
+                    undoBanner(undo)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+            }
+            .animation(.default, value: viewModel.state.undo)
             .navigationTitle(viewModel.state.title)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -112,21 +119,30 @@ public struct TaskBoardView: View {
             }
             .refreshable { await viewModel.refresh() }
         case .content:
-            ScrollView {
-                LazyVStack(spacing: 0) {
-                    ForEach(viewModel.state.rows) { row in
-                        TaskBoardRowView(
-                            row: row,
-                            retryTitle: viewModel.state.retryTitle,
-                            openDetailHint: viewModel.state.openDetailHint,
-                            onToggle: { viewModel.trigger(.completionToggled(row.id)) },
-                            onOpen: { viewModel.trigger(.taskTapped(row.id)) },
-                            onRetry: { viewModel.trigger(.completionRetryTapped(row.id)) }
-                        )
-                        DSDivider(inset: .md)
+            List {
+                ForEach(viewModel.state.rows) { row in
+                    TaskBoardRowView(
+                        row: row,
+                        retryTitle: viewModel.state.retryTitle,
+                        openDetailHint: viewModel.state.openDetailHint,
+                        onToggle: { viewModel.trigger(.completionToggled(row.id)) },
+                        onOpen: { viewModel.trigger(.taskTapped(row.id)) },
+                        onRetry: { viewModel.trigger(.rowRetryTapped(row.id)) }
+                    )
+                    .listRowInsets(EdgeInsets())
+                    .listRowBackground(Color.dsBackground)
+                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                        Button(role: .destructive) {
+                            viewModel.trigger(.deleteSwiped(row.id))
+                        } label: {
+                            Label(viewModel.state.deleteTitle, systemImage: "trash")
+                        }
+                        .disabled(row.isInFlight)
                     }
                 }
             }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
             .refreshable { await viewModel.refresh() }
         }
     }
@@ -153,6 +169,25 @@ public struct TaskBoardView: View {
         }
         .padding(.lg)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func undoBanner(_ undo: TaskBoardUndoState) -> some View {
+        HStack(spacing: .sm) {
+            Text(undo.message)
+                .font(.dsBody)
+                .foregroundStyle(Color.dsTextPrimary)
+                .lineLimit(2)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Button(viewModel.state.undoTitle) { viewModel.trigger(.undoTapped) }
+                .font(.dsBodyEmphasized)
+                .frame(minWidth: HitTarget.minimum, minHeight: HitTarget.minimum)
+        }
+        .padding(.horizontal, .md)
+        .padding(.vertical, .xs)
+        .background(Color.dsSurface, in: .rect(cornerRadius: CornerRadius.lg))
+        .padding(.horizontal, .md)
+        .padding(.bottom, .xs)
+        .accessibilityElement(children: .contain)
     }
 
     private func reloadBanner(_ message: String) -> some View {
@@ -183,7 +218,7 @@ private struct TaskBoardRowView: View {
             HStack(spacing: .sm) {
                 Button(action: onToggle) {
                     ZStack {
-                        if row.isCompletionInFlight {
+                        if row.isInFlight {
                             ProgressView()
                         } else {
                             Image(systemName: row.isComplete ? "checkmark.circle.fill" : "circle")
@@ -195,7 +230,7 @@ private struct TaskBoardRowView: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .disabled(row.isCompletionInFlight)
+                .disabled(row.isInFlight)
                 .accessibilityLabel(row.completionAccessibilityLabel)
                 .accessibilityValue(row.title)
 
@@ -226,16 +261,17 @@ private struct TaskBoardRowView: View {
             }
             .opacity(row.isComplete ? 0.6 : 1)
 
-            if let error = row.completionErrorMessage {
+            if let error = row.errorMessage {
                 HStack(spacing: .sm) {
                     Text(error)
                         .font(.dsCaption)
                         .foregroundStyle(Color.dsError)
                         .frame(maxWidth: .infinity, alignment: .leading)
                     Button(retryTitle, action: onRetry)
+                        .buttonStyle(.borderless)
                         .font(.dsBodyEmphasized)
                         .frame(minWidth: HitTarget.minimum, minHeight: HitTarget.minimum)
-                        .disabled(row.isCompletionInFlight)
+                        .disabled(row.isInFlight)
                 }
                 .padding(.leading, HitTarget.minimum + .sm)
             }

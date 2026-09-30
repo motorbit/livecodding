@@ -56,6 +56,18 @@ public extension L10n {
         public static var markIncomplete: String {
             String(localized: "taskBoard.completion.markIncomplete", defaultValue: "Mark as incomplete", bundle: .module)
         }
+        public static var delete: String {
+            String(localized: "taskBoard.row.delete", defaultValue: "Delete", bundle: .module)
+        }
+        public static var undo: String {
+            String(localized: "taskBoard.undo.action", defaultValue: "Undo", bundle: .module)
+        }
+        public static func deletedMessage(_ title: String) -> String {
+            String(localized: "taskBoard.undo.message \(title)", bundle: .module)
+        }
+        public static var deleteError: String {
+            String(localized: "taskBoard.error.delete", defaultValue: "Couldn't delete this task.", bundle: .module)
+        }
         public static var openDetailHint: String {
             String(localized: "taskBoard.row.openHint", defaultValue: "Opens task details", bundle: .module)
         }

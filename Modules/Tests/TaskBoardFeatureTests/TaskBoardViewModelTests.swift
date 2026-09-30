@@ -216,7 +216,7 @@ struct TaskBoardLoadingTests {
         let staleRefresh = sut.loadTask
 
         sut.trigger(.completionToggled(firstID))
-        await sut.completionTasks[firstID]?.value
+        await sut.rowTasks[firstID]?.value
         #expect(sut.state.rows[0].isComplete)
 
         gateContinuation.yield(TaskItem.samples)
@@ -249,13 +249,13 @@ struct TaskBoardCompletionTests {
         await sut.loadTask?.value
 
         sut.trigger(.completionToggled(firstID))
-        #expect(sut.state.rows[0].isCompletionInFlight)
-        await sut.completionTasks[firstID]?.value
+        #expect(sut.state.rows[0].isInFlight)
+        await sut.rowTasks[firstID]?.value
 
         #expect(requests.value.map(\.id) == [firstID])
         #expect(requests.value.first?.isComplete == true)
         #expect(sut.state.rows[0].isComplete)
-        #expect(!sut.state.rows[0].isCompletionInFlight)
+        #expect(!sut.state.rows[0].isInFlight)
         #expect(sut.state.rows.map(\.id) == TaskItem.samples.map(\.id))
     }
 
@@ -279,9 +279,9 @@ struct TaskBoardCompletionTests {
         await sut.loadTask?.value
 
         sut.trigger(.completionToggled(firstID))
-        let inFlight = sut.completionTasks[firstID]
+        let inFlight = sut.rowTasks[firstID]
         sut.trigger(.completionToggled(firstID))
-        #expect(sut.state.rows[0].isCompletionInFlight)
+        #expect(sut.state.rows[0].isInFlight)
 
         gateContinuation.yield()
         gateContinuation.finish()
@@ -310,17 +310,17 @@ struct TaskBoardCompletionTests {
         await sut.loadTask?.value
 
         sut.trigger(.completionToggled(dentistID))
-        await sut.completionTasks[dentistID]?.value
+        await sut.rowTasks[dentistID]?.value
 
         #expect(sut.state.rows[2].isComplete)
-        #expect(sut.state.rows[2].completionErrorMessage == L10n.TaskBoard.completionError)
-        #expect(!sut.state.rows[2].isCompletionInFlight)
+        #expect(sut.state.rows[2].errorMessage == L10n.TaskBoard.completionError)
+        #expect(!sut.state.rows[2].isInFlight)
 
-        sut.trigger(.completionRetryTapped(dentistID))
-        await sut.completionTasks[dentistID]?.value
+        sut.trigger(.rowRetryTapped(dentistID))
+        await sut.rowTasks[dentistID]?.value
 
         #expect(!sut.state.rows[2].isComplete)
-        #expect(sut.state.rows[2].completionErrorMessage == nil)
+        #expect(sut.state.rows[2].errorMessage == nil)
         #expect(sut.state.rows.map(\.id) == TaskItem.samples.map(\.id))
     }
 }
@@ -618,7 +618,7 @@ struct TaskBoardRefreshTests {
         var startedIterator = started.makeAsyncIterator()
         _ = await startedIterator.next()
         sut.trigger(.completionToggled(firstID))
-        await sut.completionTasks[firstID]?.value
+        await sut.rowTasks[firstID]?.value
         staleGateContinuation.yield(TaskItem.samples)
         staleGateContinuation.finish()
         #expect(await startedIterator.next() == 3)
@@ -628,5 +628,193 @@ struct TaskBoardRefreshTests {
 
         #expect(calls.value == 3)
         #expect(titlesWhenRefreshReturned == serverCopy.map(\.title))
+    }
+}
+
+@MainActor
+struct TaskBoardSwipeDeleteTests {
+    private let clock = TestClock()
+    private let deleteCalls = LockIsolated<[UUID]>([])
+
+    private func makeSUT(
+        fetch: @escaping @Sendable () async throws -> [TaskItem] = { TaskItem.samples },
+        delete: (@Sendable (UUID) async throws -> Void)? = nil
+    ) async -> TaskBoardViewModel {
+        let deleteCalls = deleteCalls
+        let sut = withDependencies {
+            makeDependencies(&$0)
+            $0.continuousClock = clock
+            $0.taskClient.fetchTasks = fetch
+            $0.taskClient.deleteTask = { id in
+                deleteCalls.withValue { $0.append(id) }
+                try await delete?(id)
+            }
+        } operation: { TaskBoardViewModel() }
+        sut.trigger(.onAppear)
+        await sut.loadTask?.value
+        return sut
+    }
+
+    @Test("""
+        Given loaded tasks,
+        When a row is swiped to delete,
+        Then it is hidden, the undo banner names it and no request is sent yet
+        """)
+    func swipeHidesRowAndShowsUndo() async {
+        let sut = await makeSUT()
+
+        sut.trigger(.deleteSwiped(firstID))
+
+        #expect(sut.state.rows.map(\.id) == TaskItem.samples.dropFirst().map(\.id))
+        #expect(sut.state.undo == TaskBoardUndoState(
+            message: L10n.TaskBoard.deletedMessage(TaskItem.samples[0].title)
+        ))
+        await clock.advance(by: .seconds(3))
+        #expect(deleteCalls.value.isEmpty)
+    }
+
+    @Test("""
+        Given a swiped row,
+        When Undo is tapped within the window,
+        Then the row returns to its position and no delete is ever sent
+        """)
+    func undoRestoresWithoutRequest() async {
+        let sut = await makeSUT()
+        sut.trigger(.deleteSwiped(dentistID))
+        let undoTask = sut.undoTask
+
+        sut.trigger(.undoTapped)
+        await clock.advance(by: TaskBoardViewModel.undoWindow)
+        await undoTask?.value
+
+        #expect(sut.state.rows.map(\.id) == TaskItem.samples.map(\.id))
+        #expect(sut.state.undo == nil)
+        #expect(deleteCalls.value.isEmpty)
+    }
+
+    @Test("""
+        Given a swiped row,
+        When the undo window expires,
+        Then the delete is sent once and the row stays removed
+        """)
+    func expiryCommitsDelete() async {
+        let sut = await makeSUT()
+        sut.trigger(.deleteSwiped(firstID))
+        let undoTask = sut.undoTask
+
+        await clock.advance(by: TaskBoardViewModel.undoWindow)
+        await undoTask?.value
+        await sut.rowTasks[firstID]?.value
+
+        #expect(deleteCalls.value == [firstID])
+        #expect(sut.state.undo == nil)
+        #expect(!sut.state.rows.map(\.id).contains(firstID))
+    }
+
+    @Test("""
+        Given the committed delete fails,
+        When the failure arrives and Retry is tapped,
+        Then the row is restored in place with an error, and Retry deletes it
+        """)
+    func failureRestoresRowAndRetryDeletes() async {
+        let attempts = LockIsolated(0)
+        let sut = await makeSUT(delete: { _ in
+            let attempt = attempts.withValue { $0 += 1; return $0 }
+            if attempt == 1 { throw TestError() }
+        })
+        sut.trigger(.deleteSwiped(firstID))
+        let undoTask = sut.undoTask
+        await clock.advance(by: TaskBoardViewModel.undoWindow)
+        await undoTask?.value
+        await sut.rowTasks[firstID]?.value
+
+        #expect(sut.state.rows.map(\.id) == TaskItem.samples.map(\.id))
+        #expect(sut.state.rows[0].errorMessage == L10n.TaskBoard.deleteError)
+
+        sut.trigger(.rowRetryTapped(firstID))
+        #expect(sut.state.rows[0].isInFlight)
+        await sut.rowTasks[firstID]?.value
+
+        #expect(deleteCalls.value == [firstID, firstID])
+        #expect(sut.state.rows.map(\.id) == TaskItem.samples.dropFirst().map(\.id))
+    }
+
+    @Test("""
+        Given a pending swiped row,
+        When another row is swiped,
+        Then the first delete is sent immediately and Undo applies only to the second
+        """)
+    func secondSwipeCommitsFirst() async {
+        let sut = await makeSUT()
+        sut.trigger(.deleteSwiped(firstID))
+
+        sut.trigger(.deleteSwiped(dentistID))
+        await sut.rowTasks[firstID]?.value
+        #expect(deleteCalls.value == [firstID])
+        #expect(sut.state.undo?.message == L10n.TaskBoard.deletedMessage(TaskItem.samples[2].title))
+
+        sut.trigger(.undoTapped)
+        #expect(sut.state.rows.map(\.id) == TaskItem.samples.dropFirst().map(\.id))
+    }
+
+    @Test("""
+        Given a pending swiped row,
+        When the list reloads,
+        Then the row stays hidden and Undo still restores it in place
+        """)
+    func reloadKeepsPendingRowHidden() async {
+        let sut = await makeSUT()
+        sut.trigger(.deleteSwiped(firstID))
+
+        await sut.refresh()
+        #expect(!sut.state.rows.map(\.id).contains(firstID))
+
+        sut.trigger(.undoTapped)
+        #expect(sut.state.rows.map(\.id) == TaskItem.samples.map(\.id))
+    }
+
+    @Test("""
+        Given a single task,
+        When it is swiped and then undone,
+        Then the board shows empty and then content again
+        """)
+    func swipingLastRowShowsEmptyUntilUndo() async {
+        let only = TaskItem.samples[0]
+        let sut = await makeSUT(fetch: { [only] })
+
+        sut.trigger(.deleteSwiped(only.id))
+        #expect(sut.state.phase == .empty)
+        #expect(sut.state.undo != nil)
+
+        sut.trigger(.undoTapped)
+        #expect(sut.state.phase == .content)
+        #expect(sut.state.rows.map(\.id) == [only.id])
+    }
+
+    @Test("""
+        Given a completion request in flight,
+        When the same row is swiped,
+        Then the swipe is ignored
+        """)
+    func swipeIgnoredWhileRowInFlight() async {
+        let (gate, gateContinuation) = AsyncStream<Void>.makeStream()
+        let sut = withDependencies {
+            makeDependencies(&$0)
+            $0.continuousClock = clock
+            $0.taskClient.updateTask = { item in
+                for await _ in gate { break }
+                return item
+            }
+        } operation: { TaskBoardViewModel() }
+        sut.trigger(.onAppear)
+        await sut.loadTask?.value
+        sut.trigger(.completionToggled(firstID))
+
+        sut.trigger(.deleteSwiped(firstID))
+
+        #expect(sut.state.undo == nil)
+        #expect(sut.state.rows.map(\.id) == TaskItem.samples.map(\.id))
+        gateContinuation.finish()
+        await sut.rowTasks[firstID]?.value
     }
 }
