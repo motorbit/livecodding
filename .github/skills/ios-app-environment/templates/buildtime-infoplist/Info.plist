@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Partial Info.plist: Xcode merges it with the generated keys (GENERATE_INFOPLIST_FILE = YES).
+     Set the target's "Info.plist File" (INFOPLIST_FILE) build setting to Config/Info.plist. Keep this file out of every target's
+     Copy Bundle Resources phase. -->
+<plist version="1.0">
+<dict>
+	<key>AppEnvironment</key>
+	<string>$(APP_ENVIRONMENT)</string>
+	<key>ApiBaseHostProd</key>
+	<string>$(API_BASE_HOST_PROD)</string>
+	<key>ApiBaseHostNonProd</key>
+	<string>$(API_BASE_HOST_NONPROD)</string>
+</dict>
+</plist>
