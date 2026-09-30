@@ -1129,3 +1129,98 @@ struct TaskBoardDueDateTests {
         #expect(sut.state.rows[0].dueText == "Due 9 days ago")
     }
 }
+
+@MainActor
+struct TaskBoardReviewFixTests {
+    @Test("""
+        Given a completion request in flight,
+        When the row is tapped,
+        Then detail does not open on the stale task
+        """)
+    func detailBlockedWhileRowInFlight() async {
+        let (gate, gateContinuation) = AsyncStream<Void>.makeStream()
+        let sut = withDependencies {
+            makeDependencies(&$0)
+            $0.taskClient.updateTask = { item in
+                for await _ in gate { break }
+                return item
+            }
+        } operation: { TaskBoardViewModel() }
+        sut.trigger(.onAppear)
+        await sut.loadTask?.value
+        sut.trigger(.completionToggled(firstID))
+
+        sut.trigger(.taskTapped(firstID))
+
+        #expect(sut.detailViewModel == nil)
+        #expect(sut.state.navigationPath.isEmpty)
+        gateContinuation.finish()
+        await sut.rowTasks[firstID]?.value
+        sut.trigger(.taskTapped(firstID))
+        #expect(sut.detailViewModel != nil)
+    }
+
+    @Test("""
+        Given detail is open for a row whose swipe delete failed,
+        When the row delete is retried and succeeds,
+        Then detail is popped
+        """)
+    func successfulRowDeletePopsItsDetail() async {
+        let clock = TestClock()
+        let attempts = LockIsolated(0)
+        let sut = withDependencies {
+            makeDependencies(&$0)
+            $0.continuousClock = clock
+            $0.taskClient.deleteTask = { _ in
+                let attempt = attempts.withValue { $0 += 1; return $0 }
+                if attempt == 1 { throw TestError() }
+            }
+        } operation: { TaskBoardViewModel() }
+        sut.trigger(.onAppear)
+        await sut.loadTask?.value
+        sut.trigger(.deleteSwiped(firstID))
+        let undoTask = sut.undoTask
+        await clock.advance(by: TaskBoardViewModel.undoWindow)
+        await undoTask?.value
+        await sut.rowTasks[firstID]?.value
+        sut.trigger(.taskTapped(firstID))
+        #expect(sut.detailViewModel != nil)
+
+        sut.trigger(.rowRetryTapped(firstID))
+        await sut.rowTasks[firstID]?.value
+
+        #expect(sut.detailViewModel == nil)
+        #expect(sut.state.navigationPath.isEmpty)
+        #expect(!sut.state.rows.map(\.id).contains(firstID))
+    }
+
+    @Test("""
+        Given a task due tomorrow,
+        When the day rolls over and the scene reports it,
+        Then the row reads "Due today"
+        """)
+    func dayChangeRecomputesDueText() async {
+        let now = LockIsolated(try! Date("2025-03-10T12:00:00Z", strategy: .iso8601))
+        let task = TaskItem(
+            id: UUID(), title: "T", priority: .low,
+            dueDate: try! Date("2025-03-11T00:00:00Z", strategy: .iso8601)
+        )
+        let sut = withDependencies {
+            makeDependencies(&$0)
+            $0.date = DateGenerator { now.value }
+            var calendar = Calendar(identifier: .gregorian)
+            calendar.timeZone = .gmt
+            $0.calendar = calendar
+            $0.locale = Locale(identifier: "en_US")
+            $0.taskClient.fetchTasks = { [task] }
+        } operation: { TaskBoardViewModel() }
+        sut.trigger(.onAppear)
+        await sut.loadTask?.value
+        #expect(sut.state.rows[0].dueText == "Due tomorrow")
+
+        now.setValue(try! Date("2025-03-11T08:00:00Z", strategy: .iso8601))
+        sut.trigger(.dayMayHaveChanged)
+
+        #expect(sut.state.rows[0].dueText == "Due today")
+    }
+}

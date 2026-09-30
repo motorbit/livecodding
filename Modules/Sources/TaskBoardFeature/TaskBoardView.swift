@@ -1,11 +1,13 @@
 import AddTaskFeature
 import DesignSystem
 import SwiftUI
+import UIKit
 import TaskClient
 import TaskDetailFeature
 
 public struct TaskBoardView: View {
     @ObservedObject private var viewModel: TaskBoardViewModel
+    @Environment(\.scenePhase) private var scenePhase
 
     public init(viewModel: TaskBoardViewModel) {
         self.viewModel = viewModel
@@ -122,6 +124,12 @@ public struct TaskBoardView: View {
             }
         }
         .onAppear { viewModel.trigger(.onAppear) }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { viewModel.trigger(.dayMayHaveChanged) }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.significantTimeChangeNotification)) { _ in
+            viewModel.trigger(.dayMayHaveChanged)
+        }
     }
 
     @ViewBuilder

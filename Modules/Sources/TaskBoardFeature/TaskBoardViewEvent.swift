@@ -14,6 +14,8 @@ public enum TaskBoardViewEvent {
     case deleteSwiped(UUID)
     case undoTapped
     case searchTextChanged(String)
+    /// The scene became active or the system day changed; relative due text is recomputed.
+    case dayMayHaveChanged
     case sortChanged(TaskSortOrder)
     case navigationPathChanged([TaskBoardRoute])
     case detailBackTapped

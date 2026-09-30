@@ -108,6 +108,8 @@ public final class TaskBoardViewModel: ObservableObject {
             guard text != state.searchText else { return }
             state.searchText = text
             rebuildRows()
+        case .dayMayHaveChanged:
+            rebuildRows()
         case .sortChanged(let order):
             guard order != state.sortOrder else { return }
             state.sortOrder = order
@@ -189,6 +191,9 @@ public final class TaskBoardViewModel: ObservableObject {
             tasks.removeAll { $0.id == id }
             updatePhaseAfterRemoval()
             rebuildRows()
+            if detailViewModel?.state.task.id == id {
+                popDetail()
+            }
         case .deletionFailed(let id):
             rowStatus[id] = .deletionFailed
             rowTasks[id] = nil
@@ -386,7 +391,8 @@ public final class TaskBoardViewModel: ObservableObject {
     }
 
     private func openDetail(id: UUID) {
-        guard state.navigationPath.isEmpty,
+        // Detail copies the task; opening it mid-request would save a stale snapshot.
+        guard state.navigationPath.isEmpty, !isInFlight(id),
               let item = tasks.first(where: { $0.id == id }) else { return }
         let child = withDependencies(from: self) {
             TaskDetailViewModel(state: TaskDetailViewState(task: item))
