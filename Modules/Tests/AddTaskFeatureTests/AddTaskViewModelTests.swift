@@ -57,7 +57,7 @@ struct AddTaskViewModelTests {
         """)
     func failedSaveRetainsDraftAndRetrySucceeds() async {
         let task = makeTask(title: "Kept draft")
-        let spy = CreateTaskSpy(responses: [.failure(.simulatedFailure), .success(task)])
+        let spy = CreateTaskSpy(responses: [.failure(.unavailable), .success(task)])
         let sut = makeViewModel(spy: spy)
         var events: [AddTaskViewModelEvent] = []
         sut.onEvent = { events.append($0) }

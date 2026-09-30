@@ -75,16 +75,16 @@ struct TaskClientTests {
     func injectedFailuresPropagate() async {
         let sut = makeClient(shouldFail: { true })
 
-        await #expect(throws: TaskClientError.simulatedFailure) {
+        await #expect(throws: TaskClientError.unavailable) {
             try await sut.fetchTasks()
         }
-        await #expect(throws: TaskClientError.simulatedFailure) {
+        await #expect(throws: TaskClientError.unavailable) {
             try await sut.createTask(TaskDraft(title: "Private task"))
         }
-        await #expect(throws: TaskClientError.simulatedFailure) {
+        await #expect(throws: TaskClientError.unavailable) {
             try await sut.updateTask(TaskItem.samples[0])
         }
-        await #expect(throws: TaskClientError.simulatedFailure) {
+        await #expect(throws: TaskClientError.unavailable) {
             try await sut.deleteTask(TaskItem.samples[0].id)
         }
     }
@@ -92,18 +92,18 @@ struct TaskClientTests {
     @Test("""
         Given an unknown task or blank title,
         When the live client is asked to mutate it,
-        Then it throws the unavailable error
+        Then it throws validation for the title and notFound for the missing task
         """)
-    func invalidMutationsThrowUnavailable() async {
+    func invalidMutationsThrowTypedErrors() async {
         let sut = makeClient()
 
-        await #expect(throws: TaskClientError.unavailable) {
+        await #expect(throws: TaskClientError.validation) {
             try await sut.createTask(TaskDraft(title: " \n\t "))
         }
-        await #expect(throws: TaskClientError.unavailable) {
+        await #expect(throws: TaskClientError.notFound) {
             try await sut.updateTask(TaskItem(id: UUID(), title: "Missing", priority: .low))
         }
-        await #expect(throws: TaskClientError.unavailable) {
+        await #expect(throws: TaskClientError.notFound) {
             try await sut.deleteTask(UUID())
         }
     }

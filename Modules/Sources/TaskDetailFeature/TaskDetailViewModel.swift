@@ -127,7 +127,8 @@ public final class TaskDetailViewModel: ObservableObject {
             title: normalizedTitle,
             notes: state.notes,
             priority: state.priority,
-            isComplete: state.task.isComplete
+            isComplete: state.task.isComplete,
+            dueDate: state.task.dueDate
         )
         state.isSaving = true
         state.inlineErrorMessage = nil
