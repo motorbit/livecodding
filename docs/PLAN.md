@@ -74,9 +74,9 @@ The Task Board feature's host stack owns `[TaskBoardRoute]`, the detail VM and t
 |---|---|---|---|
 | 0 | Preflight / iOS 17 observation alignment | User choice | Complete; committed as `6c1ffd7` |
 | 1 | Confirmed `docs/SPEC.md` | Grill decisions | Complete |
-| 2 | Confirm this plan | Spec | Await user checkpoint |
-| 3 | Bootstrap / baseline | Plan approval | Existing modular shell; iOS 17 settings aligned |
-| 4 | `TaskClient` contract + module/test targets + feature placeholders | Plan approval | Orchestrator only; shared `Package.swift` and test plan |
+| 2 | Confirm this plan | Spec | Approved by user |
+| 3 | Bootstrap / baseline | Plan approval | Existing modular shell; iOS 17 and iPhone portrait settings aligned |
+| 4 | `TaskClient` contract + module/test targets + feature placeholders | Plan approval | Complete; orchestrator owns shared `Package.swift` and test plan |
 | 5A | `TaskClient` live mock + client tests | Wave 4 contract | Parallel with 5B |
 | 5B | `AddTaskFeature` + `TaskDetailFeature` | Wave 4 contract, `TaskClient` interface | Parallel with 5A and each other; disjoint source/test/L10n accessor files |
 | 5C | `TaskBoardFeature` | Wave 5A and 5B | After its host/child APIs are implemented |
@@ -99,7 +99,7 @@ Workers never edit `Package.swift`, `Localizable.xcstrings`, `L10n.swift`, `AppC
 - After contract scaffolding: `cd Modules && swift build --build-tests --triple arm64-apple-ios17.0-simulator`.
 - After each worker: same package build, serially. Never run builds concurrently because they share `.build`.
 - Integration: `xcodebuild -scheme livecodding -destination 'platform=iOS Simulator,name=iPhone 18 Pro Max' -quiet build-for-testing`, followed by `test-without-building`; full package tests run on the iOS 27 simulator.
-- Configure the app for iPhone-only, portrait-only in the sanctioned Xcode wiring script; do not hand-edit `project.pbxproj`.
+- App is configured for iPhone-only, portrait-only through the sanctioned Xcode wiring script; do not hand-edit `project.pbxproj`.
 - Local commits per autopilot phase/module, with the required Copilot co-author trailer. No push or history rewrite.
 
 ## Localization keys
