@@ -128,7 +128,7 @@ Source: the review of the project against the challenge brief, plus spec revisio
 
 ## Steps
 
-### 1. Cleanup — `chore: remove unused HomeFeature`
+### 1. ✅ Cleanup — `chore: remove unused HomeFeature`
 - Delete `Sources/HomeFeature`, `Tests/HomeFeatureTests`, the `.homeFeature` case and its `uiModule(...)` block in `Package.swift`.
 - Delete the empty `Tests/AddTaskFeatureTests/AddTaskFeatureTests.swift`.
 - `python3 .github/skills/ios-project-bootstrap/scripts/sync_test_plan.py Livecodding.xctestplan --prune`.

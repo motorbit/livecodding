@@ -113,11 +113,6 @@
         "en" : { "stringUnit" : { "state" : "translated", "value" : "Try again" } }
       }
     },
-    "home.title" : {
-      "localizations" : {
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "Home" } }
-      }
-    },
     "taskBoard.add" : {
       "localizations" : {
         "en" : { "stringUnit" : { "state" : "translated", "value" : "Add Task" } }

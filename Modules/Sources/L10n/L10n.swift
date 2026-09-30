@@ -2,8 +2,8 @@ import Foundation
 
 /// Type-safe access to `Resources/Localizable.xcstrings` in this module.
 ///
-/// - One nested enum per feature (`L10n.Home`), plus `Common` for shared strings.
-/// - Keys are `feature.element[.variant]`, e.g. `home.title`, `common.retry`.
+/// - One nested enum per feature (`L10n.TaskBoard`), plus `Common` for shared strings.
+/// - Keys are `feature.element[.variant]`, e.g. `taskBoard.title`, `common.retry`.
 /// - Strings are resolved in ViewModels / StateMakers / `State.init` defaults, not in Views.
 /// - Interpolated strings use functions; the catalog key contains the format specifier
 ///   (`"common.itemsCount %lld"`).
@@ -22,9 +22,5 @@ public enum L10n {
 
     public enum Bootstrap {
         public static var loading: String { String(localized: "bootstrap.loading", bundle: .module) }
-    }
-
-    public enum Home {
-        public static var title: String { String(localized: "home.title", bundle: .module) }
     }
 }
