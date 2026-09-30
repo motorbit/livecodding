@@ -47,7 +47,7 @@ If the endpoints aren't given, ask the user to list them. Don't invent an API su
 6. **Package.swift**: merge `templates/Package.snippet.swift`. Add the module to each consumer's `dependencies` and `testDependencies`.
 7. **Tests** `Modules/Tests/__Name__ClientTests/` ← `templates/Tests/Live__Name__ClientTests.swift`. Test the live logic against a sandboxed backing (a temp file or an injected closure). Skip this only for thin wrappers with no logic, and set `tests: false`.
    - **Test plan:** if there are tests, run `python3 .github/skills/ios-project-bootstrap/scripts/sync_test_plan.py <Root>/<App>.xctestplan`. If the plan doesn't exist yet, the script says so. Create it with ios-project-bootstrap's `wire_xcode_project.py` (step 9).
-8. **Consumers** declare `@ObservationIgnored @Dependency(\.__name__Client) private var __name__Client` at class level. They read it (`let client = __name__Client`) **before** starting a `Task`.
+8. **Consumers** declare `@Dependency(\.__name__Client) private var __name__Client` at class level (not `@Published` in the iOS 16 `ObservableObject` UI pattern). They read it (`let client = __name__Client`) **before** starting a `Task`.
 
 ## Templates
 

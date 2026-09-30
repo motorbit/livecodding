@@ -57,7 +57,7 @@ let clientSettings: [SwiftSetting] = approachableConcurrency
 let package = Package(
     name: "Modules",
     defaultLocalization: "en",
-    platforms: [.iOS(.v16)],
+    platforms: [.iOS(.v17)],
     products: Module.allCases.map { .library(name: $0.name, targets: [$0.name]) },
     dependencies: [
         .package(url: "https://github.com/pointfreeco/swift-dependencies", from: "1.9.0"),

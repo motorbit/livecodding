@@ -5,7 +5,7 @@ Rules for AI agents and developers working in this repository. The **HARD RULES*
 ## Overview
 
 - **App:** `Livecodding`: starter iOS app; product purpose and target users are not yet specified.
-- **Platform:** iOS 16+, Swift 6.2 (Swift 6 language mode), SwiftUI, Observation. Keep every app/module deployment target at iOS 16.0; newer APIs require availability checks or compatible alternatives.
+- **Platform:** iOS 17+, Swift 6.2 (Swift 6 language mode), SwiftUI, Combine. Keep every app/module deployment target at iOS 17.0; newer APIs require availability checks or compatible alternatives.
 - **Architecture:**
   - thin app shell + local SPM package `Modules/` (one module per feature/client);
   - root `AppCoordinator` (composition root);
@@ -36,17 +36,17 @@ Rule ids (`R1`…) are cited by the `ios-reviewer` agent.
 2. **R2 One module per feature.** Each feature/client is its own `Modules/` target with a test target, declared through `uiModule`/`clientModule`.
 3. **R3 Import direction.** Nothing imports `AppCoordinator`. A feature imports another feature only to embed or present it as a child. Routing goes through the coordinator (ADR 0002).
 4. **R4 Pure `makeScreen`.** It creates the VM (`withDependencies(from: self)`) and wires `onEvent`, nothing else. App-level route-entry policy (session timers, resets) goes in `didEnter(_:)`. Data loading, logging and analytics (including screen views) belong to the feature VM.
-5. **R5 View = presentation.** A View renders `state` and calls `trigger(.event)`. It has no logic, no `Task`, no `@Dependency` and no formatting. Strings come from state.
+5. **R5 View = presentation.** A View observes its `ObservableObject` ViewModel with `@ObservedObject` (the app root uses `@StateObject`), renders `state` and calls `trigger(.event)`. It has no logic, no `Task`, no `@Dependency` and no formatting. Strings come from state.
 6. **R6 State = data.** `XxxViewState` is a plain `Equatable` struct with no computed logic.
 7. **R7 VM contract.**
-   - `@Observable final class`, `private(set) var state`, sync `trigger(_:)`.
+   - `ObservableObject` class, `@Published public private(set) var state`, sync `trigger(_:)`.
    - A single plain `onEvent` closure (not `@Sendable`, no `assumeIsolated`).
    - `init(state:)` with a default at most. No work or dependency reads in `init` (ADR 0003).
 8. **R8 Effects.** Async results come back as `InternalAction` → `handle(_:)`. Tasks are stored and cancelled before a restart and in `deinit`, guarded by a generation counter and `Task.isCancelled` after every `await`. No `Bool` re-entrancy flags (ADR 0005).
 9. **R9 DI.**
    - `@DependencyClient` structs live in client modules, never in UI modules. One client module may group related clients (e.g. `Storage`: Keychain + UserDefaults + SwiftData; `NetworkClient`: REST + GraphQL).
    - `testValue = Self()` (unimplemented). No no-op test values.
-   - Consumers use `@ObservationIgnored @Dependency` at class level.
+   - Consumers use `@Dependency` at class level; non-published dependency and task properties need no observation wrapper.
    - No UseCase layer without a second real consumer (ADR 0004).
 10. **R10 Isolation.**
     - UI modules use `.defaultIsolation(MainActor.self)`, and client modules stay nonisolated. Both enable `NonisolatedNonsendingByDefault` and `InferIsolatedConformances`.

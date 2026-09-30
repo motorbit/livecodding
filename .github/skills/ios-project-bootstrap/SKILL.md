@@ -1,6 +1,6 @@
 ---
 name: ios-project-bootstrap
-description: Bootstraps a new SwiftUI app targeting iOS 16+ created in Xcode into the modular layout, with a thin app shell, a local SPM package `Modules/`, a root coordinator, Logging, L10n, DesignSystem, a Bootstrap (start-up) screen and a first Home feature. It wires the package into the Xcode project automatically. Can also chain the optional AppEnvironment, Analytics, Network and Storage skills. Use when the user says "bootstrap", "set up the project", "new iOS app", "create Modules package" or "starter kit".
+description: Bootstraps a new SwiftUI app targeting iOS 17+ created in Xcode into the modular layout, with a thin app shell, a local SPM package `Modules/`, a root coordinator, Logging, L10n, DesignSystem, a Bootstrap (start-up) screen and a first Home feature. It wires the package into the Xcode project automatically. Can also chain the optional AppEnvironment, Analytics, Network and Storage skills. Use when the user says "bootstrap", "set up the project", "new iOS app", "create Modules package" or "starter kit".
 ---
 
 # iOS project bootstrap
@@ -37,7 +37,7 @@ DesignSystem and BootstrapFeature aren't options: they're always created. Use th
 
 The user creates the project in Xcode 26 or later: File ▸ New ▸ Project ▸ iOS App.
 - Interface: SwiftUI. Language: Swift. Testing System: Swift Testing. Storage: None.
-- Minimum deployment: iOS 16.0. Keep APIs compatible with iOS 16 or guard newer APIs with availability checks.
+- Minimum deployment: iOS 17.0. Keep APIs compatible with iOS 17 or guard newer APIs with availability checks.
 
 Find `<Root>/<App>.xcodeproj` and `<Root>/<App>/`. If they don't exist, stop and tell the user the steps above. The only `project.pbxproj` change allowed is through `scripts/wire_xcode_project.py` (step 9). Never edit it by hand.
 
@@ -79,7 +79,7 @@ Find `<Root>/<App>.xcodeproj` and `<Root>/<App>/`. If they don't exist, stop and
    - adds `Modules/` to the Project navigator as a folder, which Xcode treats as a local package (the UCE style). An existing **Add Local…** package reference is converted to that style;
    - links `AppCoordinator` (only) to the app target;
    - with the AppEnvironment Info.plist option (`Config/Info.plist`, `Config/Environment.xcconfig`): sets `INFOPLIST_FILE` and assigns the xcconfig, so there are no manual steps;
-   - sets iOS 16.0, Swift 6, MainActor default isolation, Approachable Concurrency and iPhone/iPad-only destinations, removing macOS/visionOS leftovers from multiplatform templates;
+   - sets iOS 17.0, Swift 6, MainActor default isolation, Approachable Concurrency and iPhone/iPad-only destinations, removing macOS/visionOS leftovers from multiplatform templates;
    - creates `<App>.xctestplan` next to the project, if it's missing, with every `Modules/Tests/*Tests` target, and adds it to the Project navigator. It also makes the plan the default of the shared `<App>` scheme: it creates the scheme if it's missing, or moves the scheme's `<Testables>` into the plan. If the scheme already uses another plan, the script warns and leaves it alone. Pass `--no-test-plan` to skip this.
 
    It refuses to run on a `project.pbxproj` with uncommitted changes. Show the user `git diff` of the file and re-run with `--allow-dirty` only if they agree. It validates the result with `plutil -lint` and restores the original on failure. If the app target isn't the only app target, pass `--target <App>`.

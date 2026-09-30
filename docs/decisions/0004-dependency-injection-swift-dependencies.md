@@ -16,7 +16,7 @@ ViewModels need network, storage, clocks, logging and analytics. Two common appr
    - `previewValue` holds canned data where previews use the client.
    - `testValue = Self()`, which is the macro's **unimplemented** client. Never write a no-op `testValue`. (If `testValue` is omitted, `withDependencies` overrides are applied on top of `previewValue`, which defaults to `liveValue`. Endpoints a test didn't stub would then silently run real code.)
 4. The macro rules: non-throwing endpoints that return a value need a default in the struct. Throwing and `Void` endpoints don't.
-5. Consumers declare `@ObservationIgnored @Dependency(\.xxx) private var xxx` **at class level**. Inside effects, read the client into a local before starting a `Task`.
+5. Consumers declare `@Dependency(\.xxx) private var xxx` **at class level**. Under the iOS 16 `ObservableObject` UI pattern this property is not `@Published`; inside effects, read the client into a local before starting a `Task`.
 6. Parents create children with `withDependencies(from: self) { Child() }`, so test overrides propagate down the object graph.
 7. **No UseCase/Interactor layer by default.** A VM calls clients directly. Extract a use case only when a **second real consumer** needs the same orchestration.
 8. SDK and vendor types never cross a client's API. Endpoints use `Sendable` domain types.

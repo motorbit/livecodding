@@ -4,7 +4,7 @@ import SwiftUI
 /// Presentation only: renders `viewModel.state` and forwards input via `trigger`.
 /// No logic, no `Task`, no dependency access, no string lookups.
 public struct __Feature__View: View {
-    private let viewModel: __Feature__ViewModel
+    @ObservedObject private var viewModel: __Feature__ViewModel
 
     public init(viewModel: __Feature__ViewModel) {
         self.viewModel = viewModel

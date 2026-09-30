@@ -5,7 +5,7 @@ import SwiftUI
 /// Maps `coordinator.screen` to a View. App-wide overlays (lock screen, offline banner, debug
 /// button) are layered in the `ZStack` above the screen. No logic and no top-level NavigationStack.
 public struct CoordinatorView: View {
-    private let coordinator: AppCoordinator
+    @ObservedObject private var coordinator: AppCoordinator
 
     public init(coordinator: AppCoordinator) {
         self.coordinator = coordinator

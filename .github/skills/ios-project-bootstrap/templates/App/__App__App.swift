@@ -8,7 +8,7 @@ struct __App__App: App {
     // Uncomment only if the app must receive UIApplicationDelegate callbacks (see AppDelegate.swift).
     // @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
-    @State private var coordinator = AppCoordinator()
+    @StateObject private var coordinator = AppCoordinator()
 
     var body: some Scene {
         WindowGroup {

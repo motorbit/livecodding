@@ -25,7 +25,7 @@ enum __Feature__Event: TrackingEvent {
 }
 
 // In the ViewModel:
-//     @ObservationIgnored @Dependency(\.analytics) private var analytics
+//     @Dependency(\.analytics) private var analytics
 //     analytics.track(__Feature__Event.itemSelected(position: index))
 //
 // In tests:

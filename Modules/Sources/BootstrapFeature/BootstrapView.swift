@@ -4,7 +4,7 @@ import SwiftUI
 /// The first screen: a full-screen progress indicator shown while `BootstrapViewModel` runs
 /// start-up work. Presentation only.
 public struct BootstrapView: View {
-    private let viewModel: BootstrapViewModel
+    @ObservedObject private var viewModel: BootstrapViewModel
 
     public init(viewModel: BootstrapViewModel) {
         self.viewModel = viewModel

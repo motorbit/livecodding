@@ -9,7 +9,7 @@ Swift 6 strict concurrency is on. UI code is naturally MainActor, but annotating
 
 ## Decision
 
-1. **Toolchain and deployment:** swift-tools-version 6.2, Swift 6 language mode, minimum iOS 16.0. The Swift 6.2 compiler/toolchain requirement is independent of the deployment target; APIs newer than iOS 16 require availability checks or compatible alternatives.
+1. **Toolchain and deployment:** swift-tools-version 6.2, Swift 6 language mode, minimum iOS 17.0. The Swift 6.2 compiler/toolchain requirement is independent of the deployment target; APIs newer than iOS 17 require availability checks or compatible alternatives.
 2. **Isolation split per module** (in `Package.swift`):
    - **UI modules** (features, `AppCoordinator`, `DesignSystem`): `.defaultIsolation(MainActor.self)`.
    - **Client/infrastructure modules** (network, keychain, logging, analytics, environment, L10n): nonisolated default. Their `@DependencyClient` structs are `Sendable`, with `@Sendable` closures.
@@ -26,7 +26,8 @@ Swift 6 strict concurrency is on. UI code is naturally MainActor, but annotating
    - Read dependencies into locals **before** creating the `Task`. Capture `[weak self]`.
 5. **Output closures between MainActor objects** (`onEvent`) are plain closures. They aren't `@Sendable` and don't use `assumeIsolated`.
 6. `Sendable` only where values cross isolation: client endpoints, events sent to clients and route values. Types that directly conform to a `Sendable`-refining protocol (e.g. `TrackingEvent`) stay nonisolated even in MainActor-default modules (SE-0466).
-7. `Task.immediate` (SE-0472, iOS 26+) may be used only behind an iOS 26 availability check; it isn't used by default because the app supports iOS 16.
+7. `Task.immediate` (SE-0472, iOS 26+) may be used only behind an iOS 26 availability check; it isn't used by default.
+8. UI observation uses Combine `ObservableObject` / `@Published` and SwiftUI `@ObservedObject` / `@StateObject` for consistent observation across the app.
 
 ## Consequences
 

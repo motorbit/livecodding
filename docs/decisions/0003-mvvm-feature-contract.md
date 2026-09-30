@@ -13,11 +13,11 @@ Each feature has these types:
 
 | Type | Shape |
 |---|---|
-| `XxxView` | `struct: View`. Holds `private let viewModel`. Renders `viewModel.state` and calls `viewModel.trigger(.event)`. Nothing else. |
+| `XxxView` | `struct: View`. Holds an `@ObservedObject` ViewModel. Renders `viewModel.state` and calls `viewModel.trigger(.event)`. Nothing else. |
 | `XxxViewState` | Plain `Equatable` struct. Display-ready values, and strings already localized. No computed logic and no custom `==`. |
 | `XxxViewEvent` | Input enum. Only the View sends it. |
 | `XxxViewModelEvent` | Output enum (`Equatable`; `Sendable` only if it crosses isolation). The parent handles it. |
-| `XxxViewModel` | `@Observable public final class` (MainActor via module default, ADR 0005). All logic lives here. |
+| `XxxViewModel` | `ObservableObject public final class` with `@Published public private(set) var state` (MainActor via module default, ADR 0005). All logic lives here. |
 | `XxxStateMaker` | *Optional.* It builds the initial state when that needs dependencies or computation: a pure `make(_ input:)` plus a `live()` that reads dependencies. |
 
 ViewModel rules:
@@ -25,7 +25,7 @@ ViewModel rules:
 2. `public func trigger(_ event: XxxViewEvent)` is **synchronous**. It starts effects. It never `await`s itself.
 3. `public var onEvent: ((XxxViewModelEvent) -> Void)?` is the **single output**. It's a plain closure: not `@Sendable`, and no `assumeIsolated`. Parent and child share MainActor.
 4. `init(state: XxxViewState = XxxViewState())` (or `= XxxStateMaker.live()`) is the only initializer parameter. It reads no dependencies, starts no work and does no logging.
-5. Dependencies are `@ObservationIgnored @Dependency(\.x) private var x` at class level (ADR 0004).
+5. Dependencies are `@Dependency(\.x) private var x` at class level (ADR 0004). Dependencies and stored Tasks are not `@Published`.
 6. Effect results come back as `private enum InternalAction`, handled in `private func handle(_ action:)`. That's the only place effect results mutate `state`.
 7. Async effects are **stored Tasks** that are cancelled before a restart and guarded by a generation counter (ADR 0005).
 8. Parents talk to children only through the child's `onEvent`. They never call a child's `trigger` or mutate its state.

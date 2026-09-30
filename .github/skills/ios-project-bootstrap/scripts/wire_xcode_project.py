@@ -29,7 +29,7 @@ Close the project in Xcode before running it (or let Xcode reload it afterwards)
 
 Usage:
     wire_xcode_project.py <Root>/<App>.xcodeproj [--target <App>] [--package-dir Modules]
-                          [--product AppCoordinator] [--config-dir Config] [--ios 16.0] [--swift 6.0]
+                          [--product AppCoordinator] [--config-dir Config] [--ios 17.0] [--swift 6.0]
                           [--no-test-plan] [--allow-dirty] [--dry-run]
 """
 
@@ -544,7 +544,7 @@ def main() -> int:
     parser.add_argument("--package-dir", default="Modules", help="package folder, relative to the project root")
     parser.add_argument("--product", default="AppCoordinator", help="package product to link to the app")
     parser.add_argument("--config-dir", default="Config", help="folder with Info.plist / Environment.xcconfig (AppEnvironment)")
-    parser.add_argument("--ios", default="16.0", help="iOS deployment target")
+    parser.add_argument("--ios", default="17.0", help="iOS deployment target")
     parser.add_argument("--swift", default="6.0", help="Swift language version")
     parser.add_argument("--no-test-plan", action="store_true", help="don't create/attach <App>.xctestplan")
     parser.add_argument("--allow-dirty", action="store_true", help="edit even if project.pbxproj has uncommitted changes")

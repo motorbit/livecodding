@@ -20,7 +20,7 @@ The app's first screen. It shows a progress indicator while start-up work runs, 
 ## Adding a start-up step
 
 1. Wrap the service in a client (**ios-dependency-client**) and add its module to this target's `dependencies` and `testDependencies`.
-2. Declare it at class level (`@ObservationIgnored @Dependency`), read it before the Task starts in `runSetup()`, and `await` it inside the Task.
+2. Declare it at class level (`@Dependency`), read it before the Task starts in `runSetup()`, and `await` it inside the Task.
 3. Map the outcome to an `InternalAction`. For a branching outcome, add a `BootstrapViewModelEvent` case and map it in the coordinator.
 4. If the step can fail, add error state plus a retry `ViewEvent`, and let retry restart `runSetup()`.
 5. Add tests with a stubbed client.
