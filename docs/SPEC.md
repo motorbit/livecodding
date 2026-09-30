@@ -1,34 +1,55 @@
-# Task Board — Spec (confirmed 2026-09-30)
+# Task Board — Spec (confirmed 2026-09-30, revised 2026-09-30 for challenge alignment)
 
 ## Goal, users, MVP scope, non-goals
 
-Build a small, polished task board for an individual to track personal tasks during a 60-minute AI-assisted live-coding exercise. The MVP lets the user browse seeded tasks, add a task, view/edit a task, mark it complete, and delete it. The list demonstrates loading, empty, and error states against an asynchronous mock API.
+Build a small, polished task board for an individual to track personal tasks during a 60-minute AI-assisted live-coding exercise. The MVP lets the user browse seeded tasks, add a task, view/edit a task, mark it complete, and delete it (from detail, or by swiping in the list with undo). The list demonstrates loading, empty, and error states against a self-built mock HTTP API. Selected stretch goals: search by title, sort by priority/completion, swipe-to-delete with undo, and due dates with relative formatting.
 
-**Non-goals:** backend or real HTTP integration, authentication, analytics, environment switching, persistence across launches, due dates, tabs, and stretch features before the core flow is complete. Discuss stretch goals only after the MVP is working.
+**Non-goals:** backend or real HTTP integration, authentication, analytics, environment switching, persistence across launches, tabs, UI state restoration, and custom theming beyond the existing light/dark DesignSystem assets. The selected stretch goals are built only after the core flow and all its states work.
 
 ## Screens
 
 | Screen | Module | Placement | Data source | States | Outputs |
 |---|---|---|---|---|---|
-| Task Board list | `TaskBoardFeature` | Initial top-level route after Bootstrap; owns its host-scoped `NavigationStack` | `TaskClient.fetchTasks()` | Initial loading; empty with Add action; load error with Retry; content; reload error banner while retaining existing content | Add opens sheet; row tap pushes detail; completion toggle updates through client |
-| Add task | `AddTaskFeature` | Sheet from `TaskBoardFeature` | `TaskClient.createTask(_:)` | Editable form; saving with active controls disabled; inline error with Retry | Success dismisses and appends the new task; failure keeps the sheet and draft |
-| Task detail/edit | `TaskDetailFeature` | Push on `TaskBoardFeature`'s `NavigationStack`; route carries task ID only | Task passed from list; `TaskClient.updateTask(_:)` / `deleteTask(id:)` | Editable draft; saving; inline retryable error; delete confirmation | Save remains on detail and reports updated task to host; delete success reports ID and pops; Back with unsaved edits asks to discard |
+| Task Board list | `TaskBoardFeature` | Initial top-level route after Bootstrap; owns its host-scoped `NavigationStack` | `TaskClient.fetchTasks()` | Initial loading; empty with Add action; load error with Retry; content; no search results; reload error banner while retaining existing content; pending-delete undo banner | Add opens sheet; row tap pushes detail; completion toggle updates through client; swipe deletes with undo; search and sort are local |
+| Add task | `AddTaskFeature` | Sheet from `TaskBoardFeature` | `TaskClient.createTask(_:)` | Editable form including optional due date; saving with active controls disabled; inline error with Retry | Success dismisses and appends the new task; failure keeps the sheet and draft |
+| Task detail/edit | `TaskDetailFeature` | Push on `TaskBoardFeature`'s `NavigationStack`; route carries task ID only | Task passed from list; `TaskClient.updateTask(_:)` / `deleteTask(id:)` | Editable draft including optional due date; saving; inline retryable error; delete confirmation | Save remains on detail and reports updated task to host; delete success reports ID and pops; Back with unsaved edits asks to discard |
 
-Task rows show title, a Low/Medium/High text badge with a subtle semantic color accent, and a completion toggle. Tapping a row (outside the completion control) opens detail. Completed tasks remain visible, checked and visually subdued. Preserve seed/API order; append newly created tasks and do not reorder when editing or completing.
+Task rows show title, a Low/Medium/High text badge with a subtle semantic color accent, a completion toggle and, when set, a relative due-date line (e.g. "Due tomorrow", "Overdue by 2 days"; overdue incomplete tasks use the error color plus text, never color alone). Tapping a row (outside the completion control) opens detail. Completed tasks remain visible, checked and visually subdued.
 
-The list has a Task Board title and an Add action. The Add form contains required title, optional notes, and Low/Medium/High priority (Medium by default); new tasks start incomplete. Detail edits these fields with an explicit Save action. Completion is toggled from the list. Delete is available from detail, requires confirmation, and removes the item only after API success.
+The list is a SwiftUI `List` (needed for `.swipeActions`). Default order is seed/API order: new tasks are appended, and editing or completing doesn't reorder. A toolbar sort menu offers **Default**, **Priority** (High → Low) and **Status** (incomplete first). Ties keep API order. Sorting is local and resets to Default on relaunch.
+
+`.searchable` filters by title: case- and diacritic-insensitive substring, trimmed, applied after sorting. If tasks exist but none match, the list shows a "No matching tasks" state, separate from the empty state. Search and sort never trigger network calls.
+
+**Swipe-to-delete with undo** is a deliberate exception to pessimistic mutations. A trailing swipe hides the row at once and shows an undo banner for 4 s, timed by an injected clock. Undo restores the row with no request. When the window expires, `deleteTask` is sent. On failure the row is restored in its original position with an inline row error and Retry. Only one delete is pending at a time: a second swipe commits the first immediately. Reloads keep pending rows hidden. Delete from detail keeps the confirmation and stays pessimistic.
+
+The list has a Task Board title and an Add action. The Add form contains required title, optional notes, Low/Medium/High priority (Medium by default) and an optional due date: an "Add due date" toggle reveals a date-only picker defaulting to today, and past dates are allowed. New tasks start incomplete. Detail edits these fields with an explicit Save action. Completion is toggled from the list. Delete is available from detail, requires confirmation, and removes the item only after API success.
 
 ## Data & API
 
-- No backend. Add a `TaskClient` client module with async `fetchTasks`, `createTask`, `updateTask`, and `deleteTask` operations. Its live implementation uses an in-memory actor-backed mock source; feature modules depend on `TaskClient`, not `NetworkClient`.
-- `Task` is a `Sendable`, `Equatable` value with UUID identity, title, optional/empty notes, priority (`low`, `medium`, `high`) and completion state. Seed IDs are stable for the current app session; new IDs are generated.
-- Seed the exact four challenge examples:
+- No backend. The app talks to a **self-built mock HTTP API** through the real transport stack:
+  - `MockTaskServer` (actor, in `TaskClient`) implements `HTTPSend` (`URLRequest → (Data, HTTPURLResponse)`) and serves the REST contract below from in-memory state.
+  - `TaskClient.live` is the repository. It builds requests with `Endpoint`, sends them through a `NetworkClient` whose `send` is the mock server, decodes JSON DTOs, and maps DTOs to domain `TaskItem`s and `NetworkError`s to `TaskClientError`.
+  - Swapping in a real backend means replacing only the `send` closure and the base URL.
+  - Feature modules depend on `TaskClient` only, never on `NetworkClient`.
+- REST contract (base URL `https://mock.taskboard.local/api`, JSON, ISO-8601 date-only `due_date`):
+
+  | Method | Path | Body | Success | Errors |
+  |---|---|---|---|---|
+  | GET | `/tasks` | — | 200 `[TaskDTO]` | 503 simulated |
+  | POST | `/tasks` | `TaskDraftDTO` | 201 `TaskDTO` | 400 blank title, 503 |
+  | PUT | `/tasks/{id}` | `TaskDTO` | 200 `TaskDTO` | 400, 404, 503 |
+  | DELETE | `/tasks/{id}` | — | 204 | 404, 503 |
+
+  `TaskDTO` = `{ id, title, notes, priority: "Low"|"Medium"|"High", done, due_date? }`. This matches the challenge's example JSON shape.
+- `TaskClientError`: `.validation` (400), `.notFound` (404), `.unavailable` (503 / transport / decoding). The fix for blank titles returns `.validation`, not `.unavailable`.
+- `TaskItem` is a `Sendable`, `Equatable` value with UUID identity, title, optional/empty notes, priority (`low`, `medium`, `high`), completion state and an optional due date (calendar day). Seed IDs are stable for the current app session; new IDs are generated server-side.
+- Seed the exact four challenge examples from a bundled `seed-tasks.json` resource copied verbatim from the challenge (the server assigns stable IDs; no due dates):
   1. Renew domain registration — notes: “Expires end of month” — High — incomplete.
   2. Reply to design feedback — no notes — Medium — incomplete.
   3. Book dentist — no notes — Low — complete.
   4. Migrate the analytics pipeline to the new warehouse and validate dashboards — notes: “Long one — check layout” — Medium — incomplete.
 - Reset to these seeds on each process launch; no disk persistence.
-- Reads wait a randomized 300–800 ms. Writes are async without artificial latency. Reads and all writes (create, update/complete, delete) fail roughly 15% of the time. Inject the clock/delay and failure policy so tests can deterministically exercise both success and failure without real sleeps.
+- Reads wait a randomized 300–800 ms; writes wait a randomized 100–300 ms so in-flight states are visible. Reads and all writes (create, update/complete, delete) fail roughly 15% of the time with HTTP 503. Inject the clock/delay and failure policy so tests can deterministically exercise both success and failure without real sleeps.
 - Normalize title by trimming whitespace and reject empty values. Do not impose an arbitrary maximum or require unique titles; UUID is identity.
 - Mutation UI is pessimistic: update confirmed state only after success. Disable the active control while its request is in flight. On failure retain the last confirmed state and draft, showing inline error and Retry at the affected row or form. A failed completion leaves its previous value; failed delete leaves the task and detail/confirmation available.
 - If a detail draft has unsaved changes, Back prompts before discarding. Confirmed discard navigates back without a write.
@@ -36,7 +57,7 @@ The list has a Task Board title and an Add action. The Add form contains require
 
 ## Persistence
 
-None. The in-memory mock is the source of truth for the current process; tasks reset to the provided examples after relaunch. No `Storage` module.
+None. The mock server's in-memory state is the source of truth for the current process; tasks reset to the provided examples after relaunch. No `Storage` module.
 
 ## Design
 
@@ -45,6 +66,7 @@ None. The in-memory mock is the source of truth for the current process; tasks r
 - Priority is never communicated by color alone: the badge includes its text and an accessible label. Completion controls, retry, Save and Delete have clear VoiceOver labels.
 - Support Dynamic Type and maintain a minimum 44-point interactive target.
 - Error copy and empty-state copy are localized via `L10n`, never hardcoded in feature Views.
+- Relative due-date text is formatted in the VM with the injected `\.date`, `\.calendar` and `\.locale` dependencies (never in Views), so tests are deterministic.
 
 ## Localization
 
@@ -60,10 +82,12 @@ English only for this exercise, using the existing String Catalog and typed `L10
 ## Kit options
 
 - `ios-project-bootstrap`: existing modular scaffold; minimum deployment is iOS 17.0, matching the current Xcode project setting. Swift 6.2 is the compiler/toolchain requirement, independent of the deployment target. Keep APIs iOS 17-compatible or availability-guard newer APIs.
+- Pull-to-refresh: the VM exposes `public func refresh() async`, which triggers a reload and awaits the stored load task, so `.refreshable` keeps its spinner until the load finishes. This is a documented exception to the sync-`trigger` contract (R7; recorded in ADR 0003).
+- Remove the unused scaffold `HomeFeature` module and its tests.
 - UI state observation uses Combine `ObservableObject` / `@Published` and SwiftUI `@ObservedObject` / `@StateObject` for consistency with the existing modular architecture.
 - `ios-feature-module`: `TaskBoardFeature` (top-level route, owns TaskDetail push and AddTask sheet), `TaskDetailFeature` (push child), `AddTaskFeature` (sheet child); all use async effects with `TaskClient`. No StateMaker required.
-- `ios-dependency-client`: new `TaskClient`, in-memory mock source, typed task/priority models; it does not depend on `NetworkClient`.
-- `ios-network-client`: existing `NetworkClient` includes JSON and Endpoint support, but is intentionally not used for this mock-only exercise.
+- `ios-dependency-client`: `TaskClient` is the repository over `NetworkClient` + `MockTaskServer`; typed task/priority models; DTO mapping.
+- `ios-network-client`: existing `NetworkClient` (JSON + Endpoint) is the transport; its `send` is the mock server for this exercise.
 - `ios-storage`: none.
 - `ios-analytics`: none.
 - `ios-app-environment`: none.
@@ -72,7 +96,7 @@ English only for this exercise, using the existing String Catalog and typed `L10
 
 ## Quality
 
-- Swift Testing for client and feature behavior: client CRUD and seeded data; list loading/empty/error/retry; add/edit/delete success and failure; completion success/failure; stale async-result protection; unsaved-edit discard; output wiring and host list updates.
+- Swift Testing for client and feature behavior: mock server routing/status codes/latency/failure; DTO mapping and error mapping; client CRUD and seeded data; search/sort; swipe-delete undo/commit/failure; due-date formatting; async refresh; list loading/empty/error/retry; add/edit/delete success and failure; completion success/failure; stale async-result protection; unsaved-edit discard; output wiring and host list updates.
 - Tests use deterministic injected clock/failure policies and client overrides; no `Task.sleep` and no real network access.
 - Build and run the app and package tests on the iPhone 18 Pro Max simulator (available iOS 27.0). `xcodebuild` is authorized for this task. Confirm the deployment target remains iOS 17.0.
 - Keep the exercise focused on the MVP within the 60-minute challenge. Do not implement stretches until the core flows/states work.
@@ -86,9 +110,9 @@ English only for this exercise, using the existing String Catalog and typed `L10
 
 ## Open / deferred
 
-- All stretch goals are deferred until the MVP is complete; then review search/filter, sorting, swipe-to-delete with undo, persistence, due dates, and additional theming as time permits.
+- Deferred stretch goals: UI state preservation across scene/process recreation, and custom theming beyond the existing light/dark assets.
 - No deep links into pushed screens, cross-feature destination enum, or coordinator-owned navigation stack.
-- No API contract exists because the data source is an in-memory mock.
+- The REST contract above is owned by the mock; there's no real server.
 
 ## Decision log
 
@@ -103,3 +127,9 @@ English only for this exercise, using the existing String Catalog and typed `L10
 - **Q22–Q24:** iPhone-only portrait; English String Catalog; Dynamic Type/VoiceOver/44-point accessibility baseline.
 - **Q25–Q28:** Delay reads only; successful Add dismisses and appends; successful edit stays on detail; use UUID-based async CRUD operations.
 - **Q29–Q30:** Show write errors inline at the affected row/form; priority uses a text badge with subtle color accent and accessible text.
+- **R1 (2026-09-30 alignment review):** Replace the in-memory TaskClient actor with a self-built mock HTTP server behind `NetworkClient` (the challenge's "build your own mock network layer"); TaskClient becomes the repository.
+- **R2:** Add swipe-to-delete with an undo window (deferred commit, a deliberate exception to pessimistic mutations); detail delete is unchanged.
+- **R3:** Writes get 100–300 ms latency; reads stay 300–800 ms.
+- **R4:** Async `refresh()` on TaskBoardViewModel for `.refreshable` (R7 exception, ADR 0003).
+- **R5:** Stretch goals in scope: search by title, sort by priority/status, due dates with relative formatting.
+- **R6:** Remove the unused HomeFeature; keep the iOS 17.0 minimum (satisfies "iOS 16+").
