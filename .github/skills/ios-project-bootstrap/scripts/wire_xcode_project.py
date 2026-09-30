@@ -30,7 +30,7 @@ Close the project in Xcode before running it (or let Xcode reload it afterwards)
 Usage:
     wire_xcode_project.py <Root>/<App>.xcodeproj [--target <App>] [--package-dir Modules]
                           [--product AppCoordinator] [--config-dir Config] [--ios 17.0] [--swift 6.0]
-                          [--no-test-plan] [--allow-dirty] [--dry-run]
+                          [--iphone-only] [--portrait-only] [--no-test-plan] [--allow-dirty] [--dry-run]
 """
 
 from __future__ import annotations
@@ -327,11 +327,17 @@ def wire(pbx: Pbx, args: argparse.Namespace) -> None:
         "SWIFT_APPROACHABLE_CONCURRENCY": "YES",
         "SDKROOT": "iphoneos",
         "SUPPORTED_PLATFORMS": "iphoneos iphonesimulator",
-        "TARGETED_DEVICE_FAMILY": "1,2",
+        "TARGETED_DEVICE_FAMILY": "1" if args.iphone_only else "1,2",
         "SUPPORTS_MACCATALYST": "NO",
         "MACOSX_DEPLOYMENT_TARGET": None,
         "XROS_DEPLOYMENT_TARGET": None,
     }
+    if args.portrait_only:
+        app_settings["INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone"] = "UIInterfaceOrientationPortrait"
+        if args.iphone_only:
+            app_settings["INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad"] = None
+        else:
+            app_settings["INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad"] = "UIInterfaceOrientationPortrait"
     other_settings: dict[str, str | None] = {
         "IPHONEOS_DEPLOYMENT_TARGET": args.ios,
         "SWIFT_VERSION": args.swift,
@@ -346,9 +352,11 @@ def wire(pbx: Pbx, args: argparse.Namespace) -> None:
     for config in pbx.list_items(pbx.object(project_configs), "buildConfigurations"):
         pbx.set_build_setting(config, "IPHONEOS_DEPLOYMENT_TARGET", args.ios)
     if pbx.text != before:
+        device_scope = "iPhone only" if args.iphone_only else "iPhone/iPad only"
+        orientation_scope = ", portrait only" if args.portrait_only else ""
         pbx.log.append(
-            f"build settings: iOS {args.ios} (project + targets), Swift {args.swift}, iPhone/iPad only, "
-            "MainActor default isolation, Approachable Concurrency"
+            f"build settings: iOS {args.ios} (project + targets), Swift {args.swift}, "
+            f"{device_scope}{orientation_scope}, MainActor default isolation, Approachable Concurrency"
         )
 
     # 4. AppEnvironment: Info.plist + xcconfig kept in `<Root>/Config/`, outside the app's
@@ -547,6 +555,8 @@ def main() -> int:
     parser.add_argument("--ios", default="17.0", help="iOS deployment target")
     parser.add_argument("--swift", default="6.0", help="Swift language version")
     parser.add_argument("--no-test-plan", action="store_true", help="don't create/attach <App>.xctestplan")
+    parser.add_argument("--iphone-only", action="store_true", help="limit the app target to iPhone")
+    parser.add_argument("--portrait-only", action="store_true", help="limit supported orientations to portrait")
     parser.add_argument("--allow-dirty", action="store_true", help="edit even if project.pbxproj has uncommitted changes")
     parser.add_argument("--dry-run", action="store_true", help="print the planned changes without writing")
     args = parser.parse_args()

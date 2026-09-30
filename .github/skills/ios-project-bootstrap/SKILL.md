@@ -79,7 +79,7 @@ Find `<Root>/<App>.xcodeproj` and `<Root>/<App>/`. If they don't exist, stop and
    - adds `Modules/` to the Project navigator as a folder, which Xcode treats as a local package (the UCE style). An existing **Add Local…** package reference is converted to that style;
    - links `AppCoordinator` (only) to the app target;
    - with the AppEnvironment Info.plist option (`Config/Info.plist`, `Config/Environment.xcconfig`): sets `INFOPLIST_FILE` and assigns the xcconfig, so there are no manual steps;
-   - sets iOS 17.0, Swift 6, MainActor default isolation, Approachable Concurrency and iPhone/iPad-only destinations, removing macOS/visionOS leftovers from multiplatform templates;
+   - sets iOS 17.0, Swift 6, MainActor default isolation, Approachable Concurrency and iPhone/iPad-only destinations, removing macOS/visionOS leftovers from multiplatform templates; optional `--iphone-only --portrait-only` flags narrow the app to iPhone portrait;
    - creates `<App>.xctestplan` next to the project, if it's missing, with every `Modules/Tests/*Tests` target, and adds it to the Project navigator. It also makes the plan the default of the shared `<App>` scheme: it creates the scheme if it's missing, or moves the scheme's `<Testables>` into the plan. If the scheme already uses another plan, the script warns and leaves it alone. Pass `--no-test-plan` to skip this.
 
    It refuses to run on a `project.pbxproj` with uncommitted changes. Show the user `git diff` of the file and re-run with `--allow-dirty` only if they agree. It validates the result with `plutil -lint` and restores the original on failure. If the app target isn't the only app target, pass `--target <App>`.

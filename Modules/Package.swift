@@ -13,10 +13,14 @@ enum Module: String, CaseIterable {
     case appCoordinator = "AppCoordinator"
 
     // Features (UI, MainActor by default)
+    case taskBoardFeature = "TaskBoardFeature"
+    case addTaskFeature = "AddTaskFeature"
+    case taskDetailFeature = "TaskDetailFeature"
     case bootstrapFeature = "BootstrapFeature"
     case homeFeature = "HomeFeature"
 
     // Clients / infrastructure (nonisolated by default)
+    case taskClient = "TaskClient"
     case logging = "Logging"
     case networkClient = "NetworkClient"
 
@@ -88,9 +92,47 @@ let package = Package(
             .module(.logging),
             .dependencies,
         ], testDependencies: [.module(.logging)]),
+        uiModule(.taskBoardFeature, dependencies: [
+            .module(.taskClient),
+            .module(.addTaskFeature),
+            .module(.taskDetailFeature),
+            .module(.designSystem),
+            .module(.l10n),
+            .module(.logging),
+            .dependencies,
+        ], testDependencies: [
+            .module(.taskClient),
+            .module(.addTaskFeature),
+            .module(.taskDetailFeature),
+            .module(.logging),
+        ]),
+        uiModule(.addTaskFeature, dependencies: [
+            .module(.taskClient),
+            .module(.designSystem),
+            .module(.l10n),
+            .module(.logging),
+            .dependencies,
+        ], testDependencies: [
+            .module(.taskClient),
+            .module(.logging),
+        ]),
+        uiModule(.taskDetailFeature, dependencies: [
+            .module(.taskClient),
+            .module(.designSystem),
+            .module(.l10n),
+            .module(.logging),
+            .dependencies,
+        ], testDependencies: [
+            .module(.taskClient),
+            .module(.logging),
+        ]),
 
         // Clients
         clientModule(.logging, dependencies: [.dependencies, .dependenciesMacros]),
+        clientModule(.taskClient, dependencies: [
+            .dependencies,
+            .dependenciesMacros,
+        ]),
         clientModule(.networkClient, dependencies: [
             .dependencies,
             .dependenciesMacros,

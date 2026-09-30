@@ -53,6 +53,34 @@
         "identifier" : "LoggingTests",
         "name" : "LoggingTests"
       }
+    },
+    {
+      "target" : {
+        "containerPath" : "container:Modules",
+        "identifier" : "AddTaskFeatureTests",
+        "name" : "AddTaskFeatureTests"
+      }
+    },
+    {
+      "target" : {
+        "containerPath" : "container:Modules",
+        "identifier" : "TaskBoardFeatureTests",
+        "name" : "TaskBoardFeatureTests"
+      }
+    },
+    {
+      "target" : {
+        "containerPath" : "container:Modules",
+        "identifier" : "TaskClientTests",
+        "name" : "TaskClientTests"
+      }
+    },
+    {
+      "target" : {
+        "containerPath" : "container:Modules",
+        "identifier" : "TaskDetailFeatureTests",
+        "name" : "TaskDetailFeatureTests"
+      }
     }
   ],
   "version" : 1
