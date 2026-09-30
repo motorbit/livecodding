@@ -125,7 +125,7 @@ let package = Package(
         clientModule(.taskClient, dependencies: [
             .dependencies,
             .dependenciesMacros,
-        ]),
+        ], resources: [.process("Resources")]),
         clientModule(.networkClient, dependencies: [
             .dependencies,
             .dependenciesMacros,

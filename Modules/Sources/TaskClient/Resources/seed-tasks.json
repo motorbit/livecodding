@@ -1,0 +1,6 @@
+[
+  { "title": "Renew domain registration", "notes": "Expires end of month", "priority": "High",   "done": false },
+  { "title": "Reply to design feedback",  "notes": "",                      "priority": "Medium", "done": false },
+  { "title": "Book dentist",              "notes": "",                      "priority": "Low",    "done": true  },
+  { "title": "Migrate the analytics pipeline to the new warehouse and validate dashboards", "notes": "Long one — check layout", "priority": "Medium", "done": false }
+]

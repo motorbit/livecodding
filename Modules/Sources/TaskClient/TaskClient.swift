@@ -72,23 +72,9 @@ public struct TaskClient: Sendable {
 }
 
 extension TaskClient: DependencyKey {
-    public static let liveValue = TaskClient.live()
-
-    public static let previewValue = TaskClient(
-        fetchTasks: { TaskItem.samples },
-        createTask: { draft in
-            TaskItem(
-                id: UUID(),
-                title: draft.title,
-                notes: draft.notes,
-                priority: draft.priority,
-                dueDate: draft.dueDate
-            )
-        },
-        updateTask: { $0 },
-        deleteTask: { _ in }
-    )
-
+    /// Repository over `\.taskNetworkClient`. In previews that resolves to the instant mock.
+    public static let liveValue = TaskClient.repository
+    public static let previewValue = TaskClient.repository
     public static let testValue = TaskClient()
 }
 
@@ -100,6 +86,7 @@ public extension DependencyValues {
 }
 
 public extension TaskItem {
+    /// The challenge seed tasks, identical to what the mock network returns first.
     static let samples = [
         TaskItem(
             id: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
