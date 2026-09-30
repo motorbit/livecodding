@@ -19,12 +19,15 @@ Rules for AI agents and developers working in this repository. The **HARD RULES*
 | Module | Kind | Purpose |
 |---|---|---|
 | `AppCoordinator` | UI (MainActor) | Composition root: routes → screens, output handling, route-entry effects |
-| `BootstrapFeature` | UI (MainActor) | Start-up screen (initial route): runs setup before Home |
-| `HomeFeature` | UI (MainActor) | Starter landing screen |
+| `BootstrapFeature` | UI (MainActor) | Start-up screen (initial route): runs setup before Task Board |
+| `TaskBoardFeature` | UI (MainActor) | Task list host: loading/retry, completion updates, Add sheet and detail push |
+| `AddTaskFeature` | UI (MainActor) | Add-task sheet owned by TaskBoardFeature |
+| `TaskDetailFeature` | UI (MainActor) | Task editor pushed within TaskBoardFeature's navigation stack |
 | `DesignSystem` | UI (MainActor) | Color/typography/spacing tokens, basic components |
 | `Logging` | client | `LoggingClient` (`\.logger`), an os.Logger wrapper |
 | `L10n` | leaf | String Catalog + typed accessors |
 | `NetworkClient` | client | HTTP transport + middlewares (REST; a GraphQL client may live here too) |
+| `TaskClient` | client | Async in-memory task CRUD mock used by Task Board features |
 
 <!-- Delete rows for modules the project doesn't have. Add every new module here. -->
 
