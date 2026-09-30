@@ -213,6 +213,41 @@
         "en" : { "stringUnit" : { "state" : "translated", "value" : "Opens task details" } }
       }
     },
+    "taskBoard.search.noResults.message" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Try a different title." } }
+      }
+    },
+    "taskBoard.search.noResults.title" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "No matching tasks" } }
+      }
+    },
+    "taskBoard.search.prompt" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Search tasks" } }
+      }
+    },
+    "taskBoard.sort.default" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Default" } }
+      }
+    },
+    "taskBoard.sort.priority" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Priority" } }
+      }
+    },
+    "taskBoard.sort.status" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Status" } }
+      }
+    },
+    "taskBoard.sort.title" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Sort" } }
+      }
+    },
     "taskBoard.title" : {
       "localizations" : {
         "en" : { "stringUnit" : { "state" : "translated", "value" : "Task Board" } }

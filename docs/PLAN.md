@@ -162,7 +162,7 @@ Source: the review of the project against the challenge brief, plus spec revisio
 - State: `undoBanner: UndoBannerState?` (message + button title from L10n).
 - Tests (`TestClock`): undo within the window → no delete call; expiry → delete once; failure → restored with error; retry; second swipe commits the first; reload while pending.
 
-### 7. Search + sort — `feat(TaskBoardFeature): search and sort`
+### 7. ✅ Search + sort — `feat(TaskBoardFeature): search and sort`
 - Events `.searchTextChanged(String)` and `.sortChanged(TaskSortOrder)`; `TaskSortOrder: CaseIterable { case default, priority, status }` in the feature.
 - `rebuildRows()` = stable-sort by order → filter by the normalized query (`localizedStandardContains` after trim).
 - `phase` remains data-driven; the new `isNoResults` flag / "No matching tasks" view appears when tasks exist but none match.

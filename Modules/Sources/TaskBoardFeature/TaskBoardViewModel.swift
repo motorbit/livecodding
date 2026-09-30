@@ -101,6 +101,14 @@ public final class TaskBoardViewModel: ObservableObject {
             }
         case .deleteSwiped(let id):
             swipeDelete(id: id)
+        case .searchTextChanged(let text):
+            guard text != state.searchText else { return }
+            state.searchText = text
+            rebuildRows()
+        case .sortChanged(let order):
+            guard order != state.sortOrder else { return }
+            state.sortOrder = order
+            rebuildRows()
         case .undoTapped:
             undoPendingDeletion()
         case .navigationPathChanged(let path):
@@ -406,7 +414,12 @@ public final class TaskBoardViewModel: ObservableObject {
     // MARK: - Rows
 
     private func rebuildRows() {
-        state.rows = tasks.map { item in
+        let query = state.searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let visible = sorted(tasks, by: state.sortOrder).filter { item in
+            query.isEmpty || item.title.localizedStandardContains(query)
+        }
+        state.isNoResults = !tasks.isEmpty && visible.isEmpty
+        state.rows = visible.map { item in
             let errorMessage: String?
             switch rowStatus[item.id] {
             case .completionFailed?:
@@ -430,6 +443,30 @@ public final class TaskBoardViewModel: ObservableObject {
                 errorMessage: errorMessage
             )
         }
+    }
+
+    private func sorted(_ items: [TaskItem], by order: TaskSortOrder) -> [TaskItem] {
+        let rank: (TaskItem) -> Int
+        switch order {
+        case .default:
+            return items
+        case .priority:
+            rank = { item in
+                switch item.priority {
+                case .high: 0
+                case .medium: 1
+                case .low: 2
+                }
+            }
+        case .status:
+            rank = { $0.isComplete ? 1 : 0 }
+        }
+        return items.enumerated()
+            .sorted { lhs, rhs in
+                let (l, r) = (rank(lhs.element), rank(rhs.element))
+                return l != r ? l < r : lhs.offset < rhs.offset
+            }
+            .map(\.element)
     }
 
     private func priorityText(_ priority: TaskPriority) -> String {

@@ -68,6 +68,27 @@ public extension L10n {
         public static var deleteError: String {
             String(localized: "taskBoard.error.delete", defaultValue: "Couldn't delete this task.", bundle: .module)
         }
+        public static var sort: String {
+            String(localized: "taskBoard.sort.title", defaultValue: "Sort", bundle: .module)
+        }
+        public static var sortDefault: String {
+            String(localized: "taskBoard.sort.default", defaultValue: "Default", bundle: .module)
+        }
+        public static var sortPriority: String {
+            String(localized: "taskBoard.sort.priority", defaultValue: "Priority", bundle: .module)
+        }
+        public static var sortStatus: String {
+            String(localized: "taskBoard.sort.status", defaultValue: "Status", bundle: .module)
+        }
+        public static var searchPrompt: String {
+            String(localized: "taskBoard.search.prompt", defaultValue: "Search tasks", bundle: .module)
+        }
+        public static var noResultsTitle: String {
+            String(localized: "taskBoard.search.noResults.title", defaultValue: "No matching tasks", bundle: .module)
+        }
+        public static var noResultsMessage: String {
+            String(localized: "taskBoard.search.noResults.message", defaultValue: "Try a different title.", bundle: .module)
+        }
         public static var openDetailHint: String {
             String(localized: "taskBoard.row.openHint", defaultValue: "Opens task details", bundle: .module)
         }

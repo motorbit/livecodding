@@ -13,6 +13,8 @@ public enum TaskBoardViewEvent {
     case rowRetryTapped(UUID)
     case deleteSwiped(UUID)
     case undoTapped
+    case searchTextChanged(String)
+    case sortChanged(TaskSortOrder)
     case navigationPathChanged([TaskBoardRoute])
     case detailBackTapped
     case discardConfirmed
