@@ -174,7 +174,7 @@ Source: the review of the project against the challenge brief, plus spec revisio
 - Board rows: `dueText: String?`, `isOverdue: Bool`, produced in the VM from `\.date.now`, `\.calendar`, `\.locale`: "Due today", "Due tomorrow", "Due in 3 days", "Overdue by 2 days" (L10n plural/format entries). Completed tasks show plain "Due …" without overdue styling.
 - Tests: formatting boundaries (today / tomorrow / yesterday / N days), overdue flag, add/edit/clear due date, dirty detection.
 
-### 9. Docs + gates — `docs: align README, AGENTS and SPEC`
+### 9. ✅ Docs + gates — `docs: align README, AGENTS and SPEC`
 - Update the `TaskClient`, `TaskBoardFeature`, `AddTaskFeature` and `TaskDetailFeature` READMEs. Update the AGENTS.md Module map (TaskClient purpose; `NetworkClient` is unused scaffold).
 - Add L10n entries (sort, search, undo, row delete error, due-date strings) to the String Catalog.
 - Run package tests + the app build on the iPhone 18 Pro Max simulator (authorized by the SPEC).

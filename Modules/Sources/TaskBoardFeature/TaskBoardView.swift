@@ -31,6 +31,11 @@ public struct TaskBoardView: View {
                 }
             }
             .animation(.default, value: viewModel.state.undo)
+            .onChange(of: viewModel.state.undo) { _, undo in
+                if let undo {
+                    AccessibilityNotification.Announcement(undo.message).post()
+                }
+            }
             .navigationTitle(viewModel.state.title)
             .searchable(
                 text: Binding(

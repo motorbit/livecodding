@@ -12,7 +12,7 @@ Rules for AI agents and developers working in this repository. The **HARD RULES*
   - event-driven MVVM;
   - DI with swift-dependencies;
   - Swift Testing.
-- **Dependencies:** `swift-dependencies` (dependency injection); NetworkClient adds typed HTTP transport, JSON decoding and endpoint construction.
+- **Dependencies:** `swift-dependencies` (dependency injection); NetworkClient (unused scaffold) provides typed HTTP transport, JSON decoding and endpoint construction; `TaskClient` talks to a DTO-level `MockNetworkClient`.
 
 ## Module map
 
@@ -20,9 +20,9 @@ Rules for AI agents and developers working in this repository. The **HARD RULES*
 |---|---|---|
 | `AppCoordinator` | UI (MainActor) | Composition root: routes → screens, output handling, route-entry effects |
 | `BootstrapFeature` | UI (MainActor) | Start-up screen (initial route): runs setup before Task Board |
-| `TaskBoardFeature` | UI (MainActor) | Task list host: loading/retry, completion updates, Add sheet and detail push |
-| `AddTaskFeature` | UI (MainActor) | Add-task sheet owned by TaskBoardFeature |
-| `TaskDetailFeature` | UI (MainActor) | Task editor pushed within TaskBoardFeature's navigation stack |
+| `TaskBoardFeature` | UI (MainActor) | Task list host: loading/retry, pull-to-refresh, completion, swipe-delete with undo, search/sort, due text, Add sheet and detail push |
+| `AddTaskFeature` | UI (MainActor) | Add-task sheet (incl. optional due date) owned by TaskBoardFeature |
+| `TaskDetailFeature` | UI (MainActor) | Task editor (incl. due date) pushed within TaskBoardFeature's navigation stack |
 | `DesignSystem` | UI (MainActor) | Color/typography/spacing tokens, basic components |
 | `Logging` | client | `LoggingClient` (`\.logger`), an os.Logger wrapper |
 | `L10n` | leaf | String Catalog + typed accessors |
