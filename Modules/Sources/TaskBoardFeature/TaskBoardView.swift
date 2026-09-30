@@ -110,7 +110,7 @@ public struct TaskBoardView: View {
                     action: .addTapped
                 )
             }
-            .refreshable { viewModel.trigger(.refreshRequested) }
+            .refreshable { await viewModel.refresh() }
         case .content:
             ScrollView {
                 LazyVStack(spacing: 0) {
@@ -127,7 +127,7 @@ public struct TaskBoardView: View {
                     }
                 }
             }
-            .refreshable { viewModel.trigger(.refreshRequested) }
+            .refreshable { await viewModel.refresh() }
         }
     }
 

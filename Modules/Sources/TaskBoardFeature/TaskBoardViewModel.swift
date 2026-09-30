@@ -35,6 +35,18 @@ public final class TaskBoardViewModel: ObservableObject {
         completionTasks.values.forEach { $0.cancel() }
     }
 
+    /// Pull-to-refresh entry point for `.refreshable`, a scoped exception to the sync-`trigger`
+    /// contract (ADR 0003). It reloads, then suspends until the latest load has been handled,
+    /// including a load restarted by a concurrent mutation or a Retry.
+    public func refresh() async {
+        trigger(.refreshRequested)
+        var awaited: Task<Void, Never>?
+        while let current = loadTask, current != awaited {
+            awaited = current
+            await current.value
+        }
+    }
+
     public func trigger(_ event: TaskBoardViewEvent) {
         switch event {
         case .onAppear:

@@ -23,6 +23,7 @@ Each feature has these types:
 ViewModel rules:
 1. `public private(set) var state`.
 2. `public func trigger(_ event: XxxViewEvent)` is **synchronous**. It starts effects. It never `await`s itself.
+   *Exception (pull-to-refresh):* a VM may also expose `public func refresh() async` for SwiftUI `.refreshable`, which must suspend until loading ends. It sends its own refresh event through `trigger`, then only awaits the stored load Task(s). It adds no logic of its own and is the only async entry point allowed. Example: `TaskBoardViewModel.refresh()`.
 3. `public var onEvent: ((XxxViewModelEvent) -> Void)?` is the **single output**. It's a plain closure: not `@Sendable`, and no `assumeIsolated`. Parent and child share MainActor.
 4. `init(state: XxxViewState = XxxViewState())` (or `= XxxStateMaker.live()`) is the only initializer parameter. It reads no dependencies, starts no work and does no logging.
 5. Dependencies are `@Dependency(\.x) private var x` at class level (ADR 0004). Dependencies and stored Tasks are not `@Published`.

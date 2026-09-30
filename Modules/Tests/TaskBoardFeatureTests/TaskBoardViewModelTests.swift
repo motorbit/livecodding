@@ -551,3 +551,82 @@ struct TaskBoardDetailTests {
         #expect(sut.state.rows.map(\.id) == TaskItem.samples.map(\.id))
     }
 }
+
+@MainActor
+struct TaskBoardRefreshTests {
+    @Test("""
+        Given a loaded board,
+        When refresh() is awaited,
+        Then it returns only after the new result is in state
+        """)
+    func refreshAwaitsLoadResult() async {
+        let fresh = [TaskItem(id: UUID(), title: "Fresh", priority: .low)]
+        let calls = LockIsolated(0)
+        let sut = withDependencies {
+            makeDependencies(&$0)
+            $0.taskClient.fetchTasks = {
+                calls.withValue { $0 += 1 }
+                return calls.value == 1 ? TaskItem.samples : fresh
+            }
+        } operation: { TaskBoardViewModel() }
+        sut.trigger(.onAppear)
+        await sut.loadTask?.value
+
+        await sut.refresh()
+
+        #expect(sut.state.rows.map(\.id) == fresh.map(\.id))
+        #expect(sut.state.phase == .content)
+    }
+
+    @Test("""
+        Given a refresh in flight,
+        When a completion mutation restarts the load,
+        Then refresh() also waits for the restarted load
+        """)
+    func refreshWaitsForRestartedLoad() async {
+        let serverCopy = TaskItem.samples.map { item in
+            var item = item
+            item.title = "Server " + item.title
+            return item
+        }
+        let (started, startedContinuation) = AsyncStream<Int>.makeStream()
+        let (staleGate, staleGateContinuation) = AsyncStream<[TaskItem]>.makeStream()
+        let (restartGate, restartGateContinuation) = AsyncStream<[TaskItem]>.makeStream()
+        let calls = LockIsolated(0)
+        let sut = withDependencies {
+            makeDependencies(&$0)
+            $0.taskClient.fetchTasks = {
+                let call = calls.withValue { $0 += 1; return $0 }
+                let gate: AsyncStream<[TaskItem]>
+                switch call {
+                case 1: return TaskItem.samples
+                case 2: gate = staleGate
+                default: gate = restartGate
+                }
+                startedContinuation.yield(call)
+                for await items in gate { return items }
+                throw CancellationError()
+            }
+        } operation: { TaskBoardViewModel() }
+        sut.trigger(.onAppear)
+        await sut.loadTask?.value
+
+        let refreshing = Task {
+            await sut.refresh()
+            return sut.state.rows.map(\.title)
+        }
+        var startedIterator = started.makeAsyncIterator()
+        _ = await startedIterator.next()
+        sut.trigger(.completionToggled(firstID))
+        await sut.completionTasks[firstID]?.value
+        staleGateContinuation.yield(TaskItem.samples)
+        staleGateContinuation.finish()
+        #expect(await startedIterator.next() == 3)
+        restartGateContinuation.yield(serverCopy)
+        restartGateContinuation.finish()
+        let titlesWhenRefreshReturned = await refreshing.value
+
+        #expect(calls.value == 3)
+        #expect(titlesWhenRefreshReturned == serverCopy.map(\.title))
+    }
+}
