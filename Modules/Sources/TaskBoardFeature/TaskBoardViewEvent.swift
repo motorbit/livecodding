@@ -9,7 +9,10 @@ public enum TaskBoardViewEvent {
     case addDismissed
     case taskTapped(UUID)
     case completionToggled(UUID)
-    case completionRetryTapped(UUID)
+    /// Retries the row's last failed operation (completion or delete).
+    case rowRetryTapped(UUID)
+    case deleteSwiped(UUID)
+    case undoTapped
     case navigationPathChanged([TaskBoardRoute])
     case detailBackTapped
     case discardConfirmed

@@ -16,9 +16,11 @@ public struct TaskBoardRowState: Equatable, Identifiable {
     public var priorityText: String
     public var priorityAccessibilityLabel: String
     public var isComplete: Bool
-    public var isCompletionInFlight: Bool
+    /// A completion or delete request for this row is in flight; its controls are disabled.
+    public var isInFlight: Bool
     public var completionAccessibilityLabel: String
-    public var completionErrorMessage: String?
+    /// Inline error for the row's last failed operation; Retry sends `.rowRetryTapped`.
+    public var errorMessage: String?
 
     public init(
         id: UUID,
@@ -27,9 +29,9 @@ public struct TaskBoardRowState: Equatable, Identifiable {
         priorityText: String,
         priorityAccessibilityLabel: String,
         isComplete: Bool,
-        isCompletionInFlight: Bool,
+        isInFlight: Bool,
         completionAccessibilityLabel: String,
-        completionErrorMessage: String?
+        errorMessage: String?
     ) {
         self.id = id
         self.title = title
@@ -37,9 +39,18 @@ public struct TaskBoardRowState: Equatable, Identifiable {
         self.priorityText = priorityText
         self.priorityAccessibilityLabel = priorityAccessibilityLabel
         self.isComplete = isComplete
-        self.isCompletionInFlight = isCompletionInFlight
+        self.isInFlight = isInFlight
         self.completionAccessibilityLabel = completionAccessibilityLabel
-        self.completionErrorMessage = completionErrorMessage
+        self.errorMessage = errorMessage
+    }
+}
+
+/// Shown while a swiped deletion can still be undone.
+public struct TaskBoardUndoState: Equatable {
+    public var message: String
+
+    public init(message: String) {
+        self.message = message
     }
 }
 
@@ -50,6 +61,7 @@ public struct TaskBoardViewState: Equatable {
     public var navigationPath: [TaskBoardRoute]
     public var isDetailDirty: Bool
     public var isDiscardConfirmationPresented: Bool
+    public var undo: TaskBoardUndoState?
 
     public var title: String
     public var addTitle: String
@@ -60,6 +72,8 @@ public struct TaskBoardViewState: Equatable {
     public var retryTitle: String
     public var backTitle: String
     public var openDetailHint: String
+    public var deleteTitle: String
+    public var undoTitle: String
     public var discardTitle: String
     public var discardMessage: String
     public var discardConfirmTitle: String
@@ -72,6 +86,7 @@ public struct TaskBoardViewState: Equatable {
         navigationPath: [TaskBoardRoute] = [],
         isDetailDirty: Bool = false,
         isDiscardConfirmationPresented: Bool = false,
+        undo: TaskBoardUndoState? = nil,
         title: String = L10n.TaskBoard.title,
         addTitle: String = L10n.TaskBoard.add,
         loadingMessage: String = L10n.TaskBoard.loading,
@@ -81,6 +96,8 @@ public struct TaskBoardViewState: Equatable {
         retryTitle: String = L10n.TaskBoard.retry,
         backTitle: String = L10n.TaskBoard.back,
         openDetailHint: String = L10n.TaskBoard.openDetailHint,
+        deleteTitle: String = L10n.TaskBoard.delete,
+        undoTitle: String = L10n.TaskBoard.undo,
         discardTitle: String = L10n.TaskDetail.discardConfirmationTitle,
         discardMessage: String = L10n.TaskDetail.discardConfirmationMessage,
         discardConfirmTitle: String = L10n.TaskDetail.discardConfirmationDiscard,
@@ -92,6 +109,7 @@ public struct TaskBoardViewState: Equatable {
         self.navigationPath = navigationPath
         self.isDetailDirty = isDetailDirty
         self.isDiscardConfirmationPresented = isDiscardConfirmationPresented
+        self.undo = undo
         self.title = title
         self.addTitle = addTitle
         self.loadingMessage = loadingMessage
@@ -101,6 +119,8 @@ public struct TaskBoardViewState: Equatable {
         self.retryTitle = retryTitle
         self.backTitle = backTitle
         self.openDetailHint = openDetailHint
+        self.deleteTitle = deleteTitle
+        self.undoTitle = undoTitle
         self.discardTitle = discardTitle
         self.discardMessage = discardMessage
         self.discardConfirmTitle = discardConfirmTitle

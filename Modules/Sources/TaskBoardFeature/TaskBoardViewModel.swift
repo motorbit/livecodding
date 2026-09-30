@@ -12,18 +12,40 @@ public final class TaskBoardViewModel: ObservableObject {
     public private(set) var detailViewModel: TaskDetailViewModel?
 
     @Dependency(\.taskClient) private var taskClient
+    @Dependency(\.continuousClock) private var clock
+
+    static let undoWindow: Duration = .seconds(4)
 
     var loadTask: Task<Void, Never>?
-    var completionTasks: [UUID: Task<Void, Never>] = [:]
+    /// One in-flight completion or delete request per row.
+    var rowTasks: [UUID: Task<Void, Never>] = [:]
+    var undoTask: Task<Void, Never>?
     private var loadGeneration = 0
-    private var completionGeneration = 0
+    private var rowGeneration = 0
+    private var undoGeneration = 0
     private var mutationGeneration = 0
     private var tasks: [TaskItem] = []
-    private var completionStatus: [UUID: CompletionStatus] = [:]
+    private var rowStatus: [UUID: RowStatus] = [:]
+    /// Swiped row that can still be undone. Not sent to the API yet.
+    private var pendingDeletion: PendingDeletion?
+    /// Swiped rows whose delete request is in flight; restored at `index` if it fails.
+    private var hiddenDeletions: [UUID: HiddenRow] = [:]
 
-    private enum CompletionStatus: Equatable {
-        case inFlight(generation: Int)
-        case failed
+    private enum RowStatus: Equatable {
+        case completionInFlight(generation: Int)
+        case completionFailed
+        case deletionInFlight(generation: Int)
+        case deletionFailed
+    }
+
+    private struct HiddenRow {
+        let item: TaskItem
+        let index: Int
+    }
+
+    private struct PendingDeletion {
+        let row: HiddenRow
+        let generation: Int
     }
 
     public init(state: TaskBoardViewState = TaskBoardViewState()) {
@@ -32,7 +54,8 @@ public final class TaskBoardViewModel: ObservableObject {
 
     deinit {
         loadTask?.cancel()
-        completionTasks.values.forEach { $0.cancel() }
+        undoTask?.cancel()
+        rowTasks.values.forEach { $0.cancel() }
     }
 
     /// Pull-to-refresh entry point for `.refreshable`, a scoped exception to the sync-`trigger`
@@ -64,8 +87,22 @@ public final class TaskBoardViewModel: ObservableObject {
             dismissAdd()
         case .taskTapped(let id):
             openDetail(id: id)
-        case .completionToggled(let id), .completionRetryTapped(let id):
+        case .completionToggled(let id):
             toggleCompletion(id: id)
+        case .rowRetryTapped(let id):
+            switch rowStatus[id] {
+            case .completionFailed?:
+                toggleCompletion(id: id)
+            case .deletionFailed?:
+                guard tasks.contains(where: { $0.id == id }) else { return }
+                sendDelete(id: id)
+            case .completionInFlight?, .deletionInFlight?, nil:
+                break
+            }
+        case .deleteSwiped(let id):
+            swipeDelete(id: id)
+        case .undoTapped:
+            undoPendingDeletion()
         case .navigationPathChanged(let path):
             guard path != state.navigationPath else { return }
             if path.isEmpty, detailViewModel != nil, state.isDetailDirty {
@@ -96,16 +133,21 @@ public final class TaskBoardViewModel: ObservableObject {
         case loadFailed
         case completionSucceeded(TaskItem)
         case completionFailed(UUID)
+        case undoWindowExpired
+        case deletionSucceeded(UUID)
+        case deletionFailed(UUID)
     }
 
     private func handle(_ action: InternalAction) {
         switch action {
         case .loaded(let items):
-            tasks = items
-            let ids = Set(items.map(\.id))
-            completionStatus = completionStatus.filter { ids.contains($0.key) }
+            var hidden = Set(hiddenDeletions.keys)
+            if let pendingDeletion { hidden.insert(pendingDeletion.row.item.id) }
+            tasks = items.filter { !hidden.contains($0.id) }
+            let ids = Set(items.map(\.id)).union(hidden)
+            rowStatus = rowStatus.filter { ids.contains($0.key) }
             state.reloadErrorMessage = nil
-            state.phase = items.isEmpty ? .empty : .content
+            state.phase = tasks.isEmpty ? .empty : .content
             rebuildRows()
         case .loadFailed:
             switch state.phase {
@@ -116,15 +158,32 @@ public final class TaskBoardViewModel: ObservableObject {
             }
         case .completionSucceeded(let item):
             mutationGeneration += 1
-            completionStatus[item.id] = nil
-            completionTasks[item.id] = nil
+            rowStatus[item.id] = nil
+            rowTasks[item.id] = nil
             if let index = tasks.firstIndex(where: { $0.id == item.id }) {
                 tasks[index] = item
             }
             rebuildRows()
         case .completionFailed(let id):
-            completionStatus[id] = .failed
-            completionTasks[id] = nil
+            rowStatus[id] = .completionFailed
+            rowTasks[id] = nil
+            rebuildRows()
+        case .undoWindowExpired:
+            commitPendingDeletion()
+        case .deletionSucceeded(let id):
+            mutationGeneration += 1
+            rowStatus[id] = nil
+            rowTasks[id] = nil
+            hiddenDeletions[id] = nil
+            tasks.removeAll { $0.id == id }
+            updatePhaseAfterRemoval()
+            rebuildRows()
+        case .deletionFailed(let id):
+            rowStatus[id] = .deletionFailed
+            rowTasks[id] = nil
+            if let row = hiddenDeletions.removeValue(forKey: id) {
+                restore(row)
+            }
             rebuildRows()
         }
     }
@@ -160,19 +219,18 @@ public final class TaskBoardViewModel: ObservableObject {
     }
 
     private func toggleCompletion(id: UUID) {
-        guard let current = tasks.first(where: { $0.id == id }) else { return }
-        if case .inFlight = completionStatus[id] { return }
+        guard let current = tasks.first(where: { $0.id == id }), !isInFlight(id) else { return }
 
-        completionGeneration += 1
-        let generation = completionGeneration
+        rowGeneration += 1
+        let generation = rowGeneration
         let client = taskClient
         var requested = current
         requested.isComplete.toggle()
-        completionTasks[id]?.cancel()
-        completionStatus[id] = .inFlight(generation: generation)
+        rowTasks[id]?.cancel()
+        rowStatus[id] = .completionInFlight(generation: generation)
         rebuildRows()
 
-        completionTasks[id] = Task { [weak self] in
+        rowTasks[id] = Task { [weak self] in
             let action: InternalAction
             do {
                 action = .completionSucceeded(try await client.updateTask(requested))
@@ -180,8 +238,100 @@ public final class TaskBoardViewModel: ObservableObject {
                 action = .completionFailed(id)
             }
             guard !Task.isCancelled, let self,
-                  self.completionStatus[id] == .inFlight(generation: generation) else { return }
+                  self.rowStatus[id] == .completionInFlight(generation: generation) else { return }
             self.handle(action)
+        }
+    }
+
+    // MARK: - Swipe to delete (deferred, undoable)
+
+    private func swipeDelete(id: UUID) {
+        guard tasks.contains(where: { $0.id == id }), !isInFlight(id) else { return }
+        commitPendingDeletion()
+        guard let index = tasks.firstIndex(where: { $0.id == id }) else { return }
+
+        let item = tasks.remove(at: index)
+        rowStatus[id] = nil
+        undoGeneration += 1
+        let generation = undoGeneration
+        pendingDeletion = PendingDeletion(row: HiddenRow(item: item, index: index), generation: generation)
+        state.undo = TaskBoardUndoState(message: L10n.TaskBoard.deletedMessage(item.title))
+        updatePhaseAfterRemoval()
+        rebuildRows()
+
+        let clock = clock
+        undoTask?.cancel()
+        undoTask = Task { [weak self] in
+            do {
+                try await clock.sleep(for: Self.undoWindow)
+            } catch {
+                return
+            }
+            guard !Task.isCancelled, let self,
+                  self.pendingDeletion?.generation == generation else { return }
+            self.handle(.undoWindowExpired)
+        }
+    }
+
+    private func undoPendingDeletion() {
+        guard let pending = pendingDeletion else { return }
+        clearPendingDeletion()
+        restore(pending.row)
+        rebuildRows()
+    }
+
+    private func commitPendingDeletion() {
+        guard let pending = pendingDeletion else { return }
+        clearPendingDeletion()
+        hiddenDeletions[pending.row.item.id] = pending.row
+        sendDelete(id: pending.row.item.id)
+    }
+
+    private func clearPendingDeletion() {
+        pendingDeletion = nil
+        undoTask?.cancel()
+        undoTask = nil
+        state.undo = nil
+    }
+
+    private func sendDelete(id: UUID) {
+        rowGeneration += 1
+        let generation = rowGeneration
+        let client = taskClient
+        rowTasks[id]?.cancel()
+        rowStatus[id] = .deletionInFlight(generation: generation)
+        rebuildRows()
+
+        rowTasks[id] = Task { [weak self] in
+            let action: InternalAction
+            do {
+                try await client.deleteTask(id: id)
+                action = .deletionSucceeded(id)
+            } catch {
+                action = .deletionFailed(id)
+            }
+            guard !Task.isCancelled, let self,
+                  self.rowStatus[id] == .deletionInFlight(generation: generation) else { return }
+            self.handle(action)
+        }
+    }
+
+    private func restore(_ row: HiddenRow) {
+        guard !tasks.contains(where: { $0.id == row.item.id }) else { return }
+        tasks.insert(row.item, at: min(row.index, tasks.count))
+        if state.phase == .empty { state.phase = .content }
+    }
+
+    private func updatePhaseAfterRemoval() {
+        if tasks.isEmpty, state.phase == .content {
+            state.phase = .empty
+        }
+    }
+
+    private func isInFlight(_ id: UUID) -> Bool {
+        switch rowStatus[id] {
+        case .completionInFlight?, .deletionInFlight?: true
+        case .completionFailed?, .deletionFailed?, nil: false
         }
     }
 
@@ -215,12 +365,10 @@ public final class TaskBoardViewModel: ObservableObject {
         case .deleted(let id):
             mutationGeneration += 1
             tasks.removeAll { $0.id == id }
-            completionTasks[id]?.cancel()
-            completionTasks[id] = nil
-            completionStatus[id] = nil
-            if tasks.isEmpty, state.phase == .content {
-                state.phase = .empty
-            }
+            rowTasks[id]?.cancel()
+            rowTasks[id] = nil
+            rowStatus[id] = nil
+            updatePhaseAfterRemoval()
             rebuildRows()
             popDetail()
         }
@@ -259,18 +407,13 @@ public final class TaskBoardViewModel: ObservableObject {
 
     private func rebuildRows() {
         state.rows = tasks.map { item in
-            let status = completionStatus[item.id]
-            let isInFlight: Bool
             let errorMessage: String?
-            switch status {
-            case .inFlight?:
-                isInFlight = true
-                errorMessage = nil
-            case .failed?:
-                isInFlight = false
+            switch rowStatus[item.id] {
+            case .completionFailed?:
                 errorMessage = L10n.TaskBoard.completionError
-            case nil:
-                isInFlight = false
+            case .deletionFailed?:
+                errorMessage = L10n.TaskBoard.deleteError
+            case .completionInFlight?, .deletionInFlight?, nil:
                 errorMessage = nil
             }
             return TaskBoardRowState(
@@ -280,11 +423,11 @@ public final class TaskBoardViewModel: ObservableObject {
                 priorityText: priorityText(item.priority),
                 priorityAccessibilityLabel: priorityAccessibilityLabel(item.priority),
                 isComplete: item.isComplete,
-                isCompletionInFlight: isInFlight,
+                isInFlight: isInFlight(item.id),
                 completionAccessibilityLabel: item.isComplete
                     ? L10n.TaskBoard.markIncomplete
                     : L10n.TaskBoard.markComplete,
-                completionErrorMessage: errorMessage
+                errorMessage: errorMessage
             )
         }
     }

@@ -7,7 +7,8 @@ Top-level Task Board screen (route `.taskBoard` in `AppCoordinator`). Owner: Tas
 - Coordinator: `withDependencies(from: self) { TaskBoardViewModel() }` → `TaskBoardView(viewModel:)`.
   The host has **no output events**; all navigation below the list is host-scoped.
 - Data: `@Dependency(\.taskClient)` — `fetchTasks()` on first appear / Retry / pull-to-refresh,
-  `updateTask(_:)` for pessimistic completion toggles.
+  `updateTask(_:)` for pessimistic completion toggles, `deleteTask(id:)` for swipe-to-delete.
+  `\.continuousClock` drives the undo window (tests inject `TestClock`).
 
 ## Host-scoped navigation
 
@@ -28,6 +29,21 @@ content keeps the list and shows an inline banner with Retry. Completion is pess
 the toggle is disabled while in flight, the prior value stays on failure with an inline Retry.
 If a successful mutation races a fetch, the stale fetch result is discarded and the board fetches
 again so it cannot revert the confirmed mutation.
+
+## Swipe to delete with undo
+
+The list is a plain `List`; a trailing swipe sends `.deleteSwiped(id)`. This is the one deliberate
+exception to pessimistic updates (SPEC R2):
+
+- The row hides immediately and an undo banner appears for `undoWindow` (4 s).
+- `.undoTapped` restores the row at its original index; no request is sent.
+- When the window expires, `deleteTask(id:)` is sent while the row stays hidden. Swiping another row
+  commits the pending one immediately (a single undo slot).
+- On failure the row is restored in place with `deleteError` and Retry; `.rowRetryTapped` retries
+  pessimistically (row visible, spinner). Row Retry also covers failed completion toggles.
+- Swipes are ignored while that row has a request in flight. Reloads keep hidden rows hidden.
+- A pending, uncommitted delete is dropped if the VM deinits (the task is not deleted).
+- Delete from Task Detail is unchanged (confirmation, pessimistic).
 
 ## Pull-to-refresh
 

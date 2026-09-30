@@ -155,7 +155,7 @@ Source: the review of the project against the challenge brief, plus spec revisio
 - ADR 0003: add an "Exception: async refresh for `.refreshable`" note; AGENTS.md R7: add one line referencing it.
 - Tests: `refresh()` returns only after the load is handled; a superseded load still resolves.
 
-### 6. List + swipe-delete with undo — `feat(TaskBoardFeature): swipe to delete with undo`
+### 6. ✅ List + swipe-delete with undo — `feat(TaskBoardFeature): swipe to delete with undo`
 - Switch `ScrollView/LazyVStack` to `List` (plain style, DS row insets, separators matching `DSDivider`).
 - `.swipeActions(edge: .trailing) { Button(role: .destructive) → .deleteSwiped(id) }`.
 - VM: `pendingDeletion: (item, index, generation)?`, `undoTask` using `@Dependency(\.continuousClock)`, sleeping 4 s → `.commitDeletion`. Events: `.deleteSwiped`, `.undoTapped`, `.deleteRetryTapped(id)`. A second swipe commits the previous one first. Reloads filter the pending id. Failure restores the row at its index with `rowErrorMessage` and Retry (generalize `completionErrorMessage` into a row error + retry kind).

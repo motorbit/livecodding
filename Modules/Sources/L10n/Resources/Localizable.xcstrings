@@ -148,6 +148,11 @@
         "en" : { "stringUnit" : { "state" : "translated", "value" : "Couldn't update this task." } }
       }
     },
+    "taskBoard.error.delete" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Couldn't delete this task." } }
+      }
+    },
     "taskBoard.error.load" : {
       "localizations" : {
         "en" : { "stringUnit" : { "state" : "translated", "value" : "Couldn't load tasks." } }
@@ -198,6 +203,11 @@
         "en" : { "stringUnit" : { "state" : "translated", "value" : "Retry" } }
       }
     },
+    "taskBoard.row.delete" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Delete" } }
+      }
+    },
     "taskBoard.row.openHint" : {
       "localizations" : {
         "en" : { "stringUnit" : { "state" : "translated", "value" : "Opens task details" } }
@@ -206,6 +216,16 @@
     "taskBoard.title" : {
       "localizations" : {
         "en" : { "stringUnit" : { "state" : "translated", "value" : "Task Board" } }
+      }
+    },
+    "taskBoard.undo.action" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Undo" } }
+      }
+    },
+    "taskBoard.undo.message %@" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Deleted “%@”" } }
       }
     },
     "taskDetail.cancel" : {
