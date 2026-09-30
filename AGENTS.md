@@ -42,7 +42,7 @@ Rule ids (`R1`…) are cited by the `ios-reviewer` agent.
 5. **R5 View = presentation.** A View observes its `ObservableObject` ViewModel with `@ObservedObject` (the app root uses `@StateObject`), renders `state` and calls `trigger(.event)`. It has no logic, no `Task`, no `@Dependency` and no formatting. Strings come from state.
 6. **R6 State = data.** `XxxViewState` is a plain `Equatable` struct with no computed logic.
 7. **R7 VM contract.**
-   - `ObservableObject` class, `@Published public private(set) var state`, sync `trigger(_:)`.
+   - `ObservableObject` class, `@Published public private(set) var state`, sync `trigger(_:)`. The only allowed async entry point is `refresh() async` for `.refreshable`, which triggers and then awaits the stored load task (ADR 0003).
    - A single plain `onEvent` closure (not `@Sendable`, no `assumeIsolated`).
    - `init(state:)` with a default at most. No work or dependency reads in `init` (ADR 0003).
 8. **R8 Effects.** Async results come back as `InternalAction` → `handle(_:)`. Tasks are stored and cancelled before a restart and in `deinit`, guarded by a generation counter and `Task.isCancelled` after every `await`. No `Bool` re-entrancy flags (ADR 0005).

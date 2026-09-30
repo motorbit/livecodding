@@ -149,7 +149,7 @@ Source: the review of the project against the challenge brief, plus spec revisio
 
 ### 4. ~~Repository over NetworkClient~~ — merged into step 3.
 
-### 5. Async refresh — `feat(TaskBoardFeature): await pull-to-refresh`
+### 5. ✅ Async refresh — `feat(TaskBoardFeature): await pull-to-refresh`
 - `public func refresh() async { trigger(.refreshRequested); await loadTask?.value }`; the View uses `.refreshable { await viewModel.refresh() }`.
 - Remove `.refreshRequested` from the View's direct use (it stays internal to `refresh()`).
 - ADR 0003: add an "Exception: async refresh for `.refreshable`" note; AGENTS.md R7: add one line referencing it.

@@ -29,6 +29,12 @@ the toggle is disabled while in flight, the prior value stays on failure with an
 If a successful mutation races a fetch, the stale fetch result is discarded and the board fetches
 again so it cannot revert the confirmed mutation.
 
+## Pull-to-refresh
+
+`.refreshable { await viewModel.refresh() }`. `refresh()` triggers `.refreshRequested`, then awaits
+the stored `loadTask`, following any restarted load, so the spinner stays until the result is in
+state. It's the only async VM entry point (ADR 0003 exception).
+
 ## Gotchas
 
 - Strings come from `L10n.TaskBoard` (discard confirmation reuses `L10n.TaskDetail`).
