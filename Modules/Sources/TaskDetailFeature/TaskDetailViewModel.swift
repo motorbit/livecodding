@@ -9,6 +9,8 @@ public final class TaskDetailViewModel: ObservableObject {
     public var onEvent: ((TaskDetailViewModelEvent) -> Void)?
 
     @Dependency(\.taskClient) private var taskClient
+    @Dependency(\.date) private var date
+    @Dependency(\.calendar) private var calendar
 
     var writeTask: Task<Void, Never>?
     private var writeGeneration = 0
@@ -40,6 +42,19 @@ public final class TaskDetailViewModel: ObservableObject {
         case .priorityChanged(let priority):
             state.priority = priority
             state.selectedPriorityLabel = priorityLabel(for: priority)
+            clearTransientMessages()
+            updateDirtyState()
+        case .dueDateToggled(let isOn):
+            guard isOn != state.hasDueDate else { return }
+            state.hasDueDate = isOn
+            state.dueDate = isOn
+                ? state.task.dueDate ?? DueDay.day(containing: date.now, in: calendar)
+                : nil
+            clearTransientMessages()
+            updateDirtyState()
+        case .dueDateChanged(let dueDate):
+            guard state.hasDueDate else { return }
+            state.dueDate = DueDay.normalized(dueDate)
             clearTransientMessages()
             updateDirtyState()
         case .saveTapped:
@@ -83,6 +98,8 @@ public final class TaskDetailViewModel: ObservableObject {
             state.title = task.title
             state.notes = task.notes
             state.priority = task.priority
+            state.hasDueDate = task.dueDate != nil
+            state.dueDate = task.dueDate
             state.isSaving = false
             state.inlineErrorMessage = nil
             state.titleValidationMessage = nil
@@ -128,7 +145,7 @@ public final class TaskDetailViewModel: ObservableObject {
             notes: state.notes,
             priority: state.priority,
             isComplete: state.task.isComplete,
-            dueDate: state.task.dueDate
+            dueDate: state.dueDate
         )
         state.isSaving = true
         state.inlineErrorMessage = nil
@@ -181,11 +198,17 @@ public final class TaskDetailViewModel: ObservableObject {
     }
 
     private func updateDirtyState() {
-        let draft = TaskDraft(title: state.title, notes: state.notes, priority: state.priority)
+        let draft = TaskDraft(
+            title: state.title,
+            notes: state.notes,
+            priority: state.priority,
+            dueDate: state.dueDate
+        )
         let confirmedDraft = TaskDraft(
             title: state.task.title,
             notes: state.task.notes,
-            priority: state.task.priority
+            priority: state.task.priority,
+            dueDate: state.task.dueDate
         )
         let isDirty = draft != confirmedDraft
         guard state.isDirty != isDirty else {

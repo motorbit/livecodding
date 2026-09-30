@@ -89,6 +89,24 @@ public extension L10n {
         public static var noResultsMessage: String {
             String(localized: "taskBoard.search.noResults.message", defaultValue: "Try a different title.", bundle: .module)
         }
+        public static var dueToday: String {
+            String(localized: "taskBoard.due.today", defaultValue: "Due today", bundle: .module)
+        }
+        public static var dueTomorrow: String {
+            String(localized: "taskBoard.due.tomorrow", defaultValue: "Due tomorrow", bundle: .module)
+        }
+        public static var dueYesterday: String {
+            String(localized: "taskBoard.due.yesterday", defaultValue: "Due yesterday", bundle: .module)
+        }
+        public static func dueInDays(_ days: Int, locale: Locale) -> String {
+            String(localized: "taskBoard.due.inDays \(days)", bundle: .module, locale: locale)
+        }
+        public static func dueDaysAgo(_ days: Int, locale: Locale) -> String {
+            String(localized: "taskBoard.due.daysAgo \(days)", bundle: .module, locale: locale)
+        }
+        public static func overdueByDays(_ days: Int, locale: Locale) -> String {
+            String(localized: "taskBoard.due.overdue \(days)", bundle: .module, locale: locale)
+        }
         public static var openDetailHint: String {
             String(localized: "taskBoard.row.openHint", defaultValue: "Opens task details", bundle: .module)
         }

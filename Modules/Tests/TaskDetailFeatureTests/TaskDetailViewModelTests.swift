@@ -240,3 +240,87 @@ private func makeDependencies(_ dependencies: inout DependencyValues) {
     dependencies.taskClient.updateTask = { _ in throw TaskClientError.unavailable }
     dependencies.taskClient.deleteTask = { _ in throw TaskClientError.unavailable }
 }
+
+@MainActor
+struct TaskDetailDueDateTests {
+    private func utcDay(_ day: String) -> Date {
+        try! Date("\(day)T00:00:00Z", strategy: .iso8601)
+    }
+
+    private func makeSUT(task: TaskItem, update: (@Sendable (TaskItem) async throws -> TaskItem)? = nil) -> TaskDetailViewModel {
+        withDependencies {
+            makeDependencies(&$0)
+            // 2025-03-11 00:30 in Tokyo (still 2025-03-10 in UTC).
+            $0.date.now = try! Date("2025-03-10T15:30:00Z", strategy: .iso8601)
+            var calendar = Calendar(identifier: .gregorian)
+            calendar.timeZone = TimeZone(identifier: "Asia/Tokyo")!
+            $0.calendar = calendar
+            if let update { $0.taskClient.updateTask = update }
+        } operation: {
+            TaskDetailViewModel(state: TaskDetailViewState(task: task))
+        }
+    }
+
+    @Test("""
+        Given a task without a due date,
+        When the toggle is turned on and off,
+        Then the local today is used and dirty follows the change
+        """)
+    func addingAndClearingDueDateTracksDirty() {
+        let sut = makeSUT(task: sampleTask())
+        var events: [TaskDetailViewModelEvent] = []
+        sut.onEvent = { events.append($0) }
+
+        sut.trigger(.dueDateToggled(true))
+        #expect(sut.state.dueDate == utcDay("2025-03-11"))
+        #expect(sut.state.isDirty)
+
+        sut.trigger(.dueDateToggled(false))
+        #expect(sut.state.dueDate == nil)
+        #expect(!sut.state.isDirty)
+        #expect(events == [.dirtyChanged(true), .dirtyChanged(false)])
+    }
+
+    @Test("""
+        Given a task with a due date,
+        When the date is changed and changed back,
+        Then dirty is set and cleared
+        """)
+    func changingDueDateTracksDirty() {
+        var task = sampleTask()
+        task.dueDate = utcDay("2025-03-20")
+        let sut = makeSUT(task: task)
+        #expect(sut.state.hasDueDate)
+
+        sut.trigger(.dueDateChanged(try! Date("2025-03-21T09:00:00Z", strategy: .iso8601)))
+        #expect(sut.state.dueDate == utcDay("2025-03-21"))
+        #expect(sut.state.isDirty)
+
+        sut.trigger(.dueDateChanged(utcDay("2025-03-20")))
+        #expect(!sut.state.isDirty)
+    }
+
+    @Test("""
+        Given a cleared due date,
+        When Save succeeds,
+        Then the update has no due date and the saved task becomes the clean baseline
+        """)
+    func saveSendsClearedDueDate() async {
+        var task = sampleTask()
+        task.dueDate = utcDay("2025-03-20")
+        let submitted = LockIsolated<TaskItem?>(nil)
+        let sut = makeSUT(task: task, update: { item in
+            submitted.setValue(item)
+            return item
+        })
+
+        sut.trigger(.dueDateToggled(false))
+        sut.trigger(.saveTapped)
+        await sut.writeTask?.value
+
+        #expect(submitted.value?.dueDate == nil)
+        #expect(sut.state.task.dueDate == nil)
+        #expect(!sut.state.hasDueDate)
+        #expect(!sut.state.isDirty)
+    }
+}

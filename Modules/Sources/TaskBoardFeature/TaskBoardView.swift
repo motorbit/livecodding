@@ -277,12 +277,19 @@ private struct TaskBoardRowView: View {
 
                 Button(action: onOpen) {
                     HStack(spacing: .sm) {
-                        Text(row.title)
-                            .font(.dsBody)
-                            .strikethrough(row.isComplete)
-                            .foregroundStyle(row.isComplete ? Color.dsTextSecondary : Color.dsTextPrimary)
-                            .multilineTextAlignment(.leading)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                        VStack(alignment: .leading, spacing: .xxs) {
+                            Text(row.title)
+                                .font(.dsBody)
+                                .strikethrough(row.isComplete)
+                                .foregroundStyle(row.isComplete ? Color.dsTextSecondary : Color.dsTextPrimary)
+                                .multilineTextAlignment(.leading)
+                            if let dueText = row.dueText {
+                                Text(dueText)
+                                    .font(.dsCaption)
+                                    .foregroundStyle(row.isOverdue ? Color.dsError : Color.dsTextSecondary)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
                         PriorityBadge(
                             text: row.priorityText,
                             priority: row.priority,

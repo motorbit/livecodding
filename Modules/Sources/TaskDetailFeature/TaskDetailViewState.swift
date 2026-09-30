@@ -1,3 +1,4 @@
+import Foundation
 import L10n
 import TaskClient
 
@@ -7,6 +8,11 @@ public struct TaskDetailViewState: Equatable {
     public var notes: String
     public var priority: TaskPriority
     public var selectedPriorityLabel: String
+    public var hasDueDate: Bool
+    /// Canonical due day (00:00 UTC); set while `hasDueDate` is on.
+    public var dueDate: Date?
+    public var dueDateToggleLabel: String
+    public var dueDateLabel: String
     public var navigationTitle: String
     public var titleFieldLabel: String
     public var notesFieldLabel: String
@@ -37,6 +43,10 @@ public struct TaskDetailViewState: Equatable {
         title = task.title
         notes = task.notes
         priority = task.priority
+        hasDueDate = task.dueDate != nil
+        dueDate = task.dueDate
+        dueDateToggleLabel = L10n.TaskDetail.dueDateToggle
+        dueDateLabel = L10n.TaskDetail.dueDateLabel
         switch task.priority {
         case .low:
             selectedPriorityLabel = L10n.TaskDetail.lowPriority

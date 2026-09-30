@@ -55,6 +55,29 @@ public struct AddTaskView: View {
                         Text(viewModel.state.highPriorityLabel).tag(TaskPriority.high)
                     }
                     .pickerStyle(.segmented)
+
+                    Toggle(
+                        viewModel.state.dueDateToggleLabel,
+                        isOn: Binding(
+                            get: { viewModel.state.hasDueDate },
+                            set: { viewModel.trigger(.dueDateToggled($0)) }
+                        )
+                    )
+                    .font(.dsBody)
+                    .frame(minHeight: HitTarget.minimum)
+
+                    if let dueDate = viewModel.state.dueDate {
+                        DatePicker(
+                            viewModel.state.dueDateLabel,
+                            selection: Binding(
+                                get: { dueDate },
+                                set: { viewModel.trigger(.dueDateChanged($0)) }
+                            ),
+                            displayedComponents: .date
+                        )
+                        .font(.dsBody)
+                        .environment(\.timeZone, DueDay.timeZone)
+                    }
                 }
 
                 if let errorMessage = viewModel.state.errorMessage {

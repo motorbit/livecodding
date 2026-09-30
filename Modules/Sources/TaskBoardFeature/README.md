@@ -8,7 +8,8 @@ Top-level Task Board screen (route `.taskBoard` in `AppCoordinator`). Owner: Tas
   The host has **no output events**; all navigation below the list is host-scoped.
 - Data: `@Dependency(\.taskClient)` — `fetchTasks()` on first appear / Retry / pull-to-refresh,
   `updateTask(_:)` for pessimistic completion toggles, `deleteTask(id:)` for swipe-to-delete.
-  `\.continuousClock` drives the undo window (tests inject `TestClock`).
+  `\.continuousClock` drives the undo window (tests inject `TestClock`); `\.date`, `\.calendar`,
+  `\.locale` drive due-date text.
 
 ## Host-scoped navigation
 
@@ -37,6 +38,13 @@ Local only; never triggers a request. `rebuildRows()` stable-sorts `tasks` by `s
 API order), then filters by the trimmed `searchText` with `localizedStandardContains` (case- and
 diacritic-insensitive). `isNoResults` (tasks exist, none match) shows "No matching tasks" inside the
 `.content` phase; `.empty` still means no tasks at all. Both reset on relaunch.
+
+## Due dates
+
+Rows show `dueText`/`isOverdue`, built in `rebuildRows()` from `\.date.now` + `\.calendar` (local
+today → `DueDay`) and `\.locale` (plural rules): "Due today", "Due tomorrow", "Due in N days";
+past days show "Overdue by N days" (error color) for incomplete tasks and "Due yesterday" /
+"Due N days ago" for completed ones. `\.date` is read only when a visible task has a due date.
 
 ## Swipe to delete with undo
 

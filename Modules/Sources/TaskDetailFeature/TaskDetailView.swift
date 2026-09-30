@@ -58,6 +58,26 @@ public struct TaskDetailView: View {
                             .foregroundStyle(Color.dsTextSecondary)
                     }
                 }
+
+                Toggle(
+                    viewModel.state.dueDateToggleLabel,
+                    isOn: Binding(
+                        get: { viewModel.state.hasDueDate },
+                        set: { viewModel.trigger(.dueDateToggled($0)) }
+                    )
+                )
+
+                if let dueDate = viewModel.state.dueDate {
+                    DatePicker(
+                        viewModel.state.dueDateLabel,
+                        selection: Binding(
+                            get: { dueDate },
+                            set: { viewModel.trigger(.dueDateChanged($0)) }
+                        ),
+                        displayedComponents: .date
+                    )
+                    .environment(\.timeZone, DueDay.timeZone)
+                }
             }
             .disabled(!viewModel.state.canEditFields)
 

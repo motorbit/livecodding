@@ -985,3 +985,89 @@ struct TaskBoardSearchSortTests {
         #expect(titles(sut) == ["High A", "High B"])
     }
 }
+
+@MainActor
+struct TaskBoardDueDateTests {
+    private static func utcDay(_ day: String) -> Date {
+        try! Date("\(day)T00:00:00Z", strategy: .iso8601)
+    }
+
+    private static func item(_ title: String, due: String?, done: Bool = false) -> TaskItem {
+        TaskItem(id: UUID(), title: title, priority: .medium, isComplete: done, dueDate: due.map(utcDay))
+    }
+
+    private func makeSUT(_ items: [TaskItem]) async -> TaskBoardViewModel {
+        let sut = withDependencies {
+            makeDependencies(&$0)
+            // 2025-03-10 23:30 in Los Angeles: local today is 2025-03-10 although UTC is already the 11th.
+            $0.date.now = try! Date("2025-03-11T06:30:00Z", strategy: .iso8601)
+            var calendar = Calendar(identifier: .gregorian)
+            calendar.timeZone = TimeZone(identifier: "America/Los_Angeles")!
+            $0.calendar = calendar
+            $0.locale = Locale(identifier: "en_US")
+            $0.taskClient.fetchTasks = { items }
+        } operation: { TaskBoardViewModel() }
+        sut.trigger(.onAppear)
+        await sut.loadTask?.value
+        return sut
+    }
+
+    @Test("""
+        Given incomplete tasks due around the local today,
+        When the board loads,
+        Then rows show relative due text and only past ones are overdue
+        """)
+    func relativeTextForIncompleteTasks() async {
+        let sut = await makeSUT([
+            Self.item("none", due: nil),
+            Self.item("today", due: "2025-03-10"),
+            Self.item("tomorrow", due: "2025-03-11"),
+            Self.item("in3", due: "2025-03-13"),
+            Self.item("yesterday", due: "2025-03-09"),
+            Self.item("ago2", due: "2025-03-08"),
+        ])
+
+        #expect(sut.state.rows.map(\.dueText) == [
+            nil,
+            "Due today",
+            "Due tomorrow",
+            "Due in 3 days",
+            "Overdue by 1 day",
+            "Overdue by 2 days",
+        ])
+        #expect(sut.state.rows.map(\.isOverdue) == [false, false, false, false, true, true])
+    }
+
+    @Test("""
+        Given completed tasks with past due dates,
+        When the board loads,
+        Then rows show plain past due text without overdue styling
+        """)
+    func completedTasksAreNeverOverdue() async {
+        let sut = await makeSUT([
+            Self.item("yesterday", due: "2025-03-09", done: true),
+            Self.item("ago5", due: "2025-03-05", done: true),
+            Self.item("today", due: "2025-03-10", done: true),
+        ])
+
+        #expect(sut.state.rows.map(\.dueText) == ["Due yesterday", "Due 5 days ago", "Due today"])
+        #expect(sut.state.rows.allSatisfy { !$0.isOverdue })
+    }
+
+    @Test("""
+        Given an overdue task,
+        When its completion toggle succeeds,
+        Then the row is no longer overdue
+        """)
+    func completingClearsOverdue() async {
+        let overdue = Self.item("late", due: "2025-03-01")
+        let sut = await makeSUT([overdue])
+        #expect(sut.state.rows[0].isOverdue)
+
+        sut.trigger(.completionToggled(overdue.id))
+        await sut.rowTasks[overdue.id]?.value
+
+        #expect(!sut.state.rows[0].isOverdue)
+        #expect(sut.state.rows[0].dueText == "Due 9 days ago")
+    }
+}

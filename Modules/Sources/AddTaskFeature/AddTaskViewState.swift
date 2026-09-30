@@ -1,3 +1,4 @@
+import Foundation
 import L10n
 import TaskClient
 
@@ -14,6 +15,11 @@ public struct AddTaskViewState: Equatable {
     public var lowPriorityLabel: String
     public var mediumPriorityLabel: String
     public var highPriorityLabel: String
+    public var hasDueDate: Bool
+    /// Canonical due day (00:00 UTC); set while `hasDueDate` is on.
+    public var dueDate: Date?
+    public var dueDateToggleLabel: String
+    public var dueDateLabel: String
     public var saveLabel: String
     public var cancelLabel: String
     public var retryLabel: String
@@ -34,6 +40,10 @@ public struct AddTaskViewState: Equatable {
         lowPriorityLabel: String = L10n.AddTask.lowPriority,
         mediumPriorityLabel: String = L10n.AddTask.mediumPriority,
         highPriorityLabel: String = L10n.AddTask.highPriority,
+        hasDueDate: Bool = false,
+        dueDate: Date? = nil,
+        dueDateToggleLabel: String = L10n.AddTask.dueDateToggle,
+        dueDateLabel: String = L10n.AddTask.dueDateLabel,
         saveLabel: String = L10n.AddTask.save,
         cancelLabel: String = L10n.AddTask.cancel,
         retryLabel: String = L10n.AddTask.retry,
@@ -53,6 +63,10 @@ public struct AddTaskViewState: Equatable {
         self.lowPriorityLabel = lowPriorityLabel
         self.mediumPriorityLabel = mediumPriorityLabel
         self.highPriorityLabel = highPriorityLabel
+        self.hasDueDate = hasDueDate
+        self.dueDate = dueDate
+        self.dueDateToggleLabel = dueDateToggleLabel
+        self.dueDateLabel = dueDateLabel
         self.saveLabel = saveLabel
         self.cancelLabel = cancelLabel
         self.retryLabel = retryLabel

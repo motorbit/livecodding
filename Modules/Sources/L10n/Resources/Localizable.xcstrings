@@ -1,6 +1,16 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "addTask.dueDate.label" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Due date" } }
+      }
+    },
+    "addTask.dueDate.toggle" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Add due date" } }
+      }
+    },
     "bootstrap.loading" : {
       "localizations" : {
         "en" : { "stringUnit" : { "state" : "translated", "value" : "Loading" } }
@@ -131,6 +141,57 @@
     "taskBoard.completion.markIncomplete" : {
       "localizations" : {
         "en" : { "stringUnit" : { "state" : "translated", "value" : "Mark as incomplete" } }
+      }
+    },
+    "taskBoard.due.daysAgo %lld" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : { "stringUnit" : { "state" : "translated", "value" : "Due %lld day ago" } },
+              "other" : { "stringUnit" : { "state" : "translated", "value" : "Due %lld days ago" } }
+            }
+          }
+        }
+      }
+    },
+    "taskBoard.due.inDays %lld" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : { "stringUnit" : { "state" : "translated", "value" : "Due in %lld day" } },
+              "other" : { "stringUnit" : { "state" : "translated", "value" : "Due in %lld days" } }
+            }
+          }
+        }
+      }
+    },
+    "taskBoard.due.overdue %lld" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : { "stringUnit" : { "state" : "translated", "value" : "Overdue by %lld day" } },
+              "other" : { "stringUnit" : { "state" : "translated", "value" : "Overdue by %lld days" } }
+            }
+          }
+        }
+      }
+    },
+    "taskBoard.due.today" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Due today" } }
+      }
+    },
+    "taskBoard.due.tomorrow" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Due tomorrow" } }
+      }
+    },
+    "taskBoard.due.yesterday" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Due yesterday" } }
       }
     },
     "taskBoard.empty.message" : {
@@ -306,6 +367,16 @@
     "taskDetail.discardConfirmation.title" : {
       "localizations" : {
         "en" : { "stringUnit" : { "state" : "translated", "value" : "Discard changes?" } }
+      }
+    },
+    "taskDetail.dueDate.label" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Date" } }
+      }
+    },
+    "taskDetail.dueDate.toggle" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Due date" } }
       }
     },
     "taskDetail.error.delete" : {
