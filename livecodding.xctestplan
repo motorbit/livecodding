@@ -36,13 +36,6 @@
     {
       "target" : {
         "containerPath" : "container:Modules",
-        "identifier" : "HomeFeatureTests",
-        "name" : "HomeFeatureTests"
-      }
-    },
-    {
-      "target" : {
-        "containerPath" : "container:Modules",
         "identifier" : "NetworkClientTests",
         "name" : "NetworkClientTests"
       }

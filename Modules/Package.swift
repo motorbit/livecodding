@@ -17,7 +17,6 @@ enum Module: String, CaseIterable {
     case addTaskFeature = "AddTaskFeature"
     case taskDetailFeature = "TaskDetailFeature"
     case bootstrapFeature = "BootstrapFeature"
-    case homeFeature = "HomeFeature"
 
     // Clients / infrastructure (nonisolated by default)
     case taskClient = "TaskClient"
@@ -81,12 +80,6 @@ let package = Package(
 
         // Features
         uiModule(.bootstrapFeature, dependencies: [
-            .module(.designSystem),
-            .module(.l10n),
-            .module(.logging),
-            .dependencies,
-        ], testDependencies: [.module(.logging)]),
-        uiModule(.homeFeature, dependencies: [
             .module(.designSystem),
             .module(.l10n),
             .module(.logging),
