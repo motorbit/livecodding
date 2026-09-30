@@ -82,7 +82,7 @@ English only for this exercise, using the existing String Catalog and typed `L10
 - Existing app/project name remains `livecodding` / `Livecodding`; the app's main screen is titled **Task Board**.
 - Initial app bootstrap route transitions to the Task Board list route.
 - Use the existing app scheme and `.xctestplan`; keep it synced when test targets are added.
-- No commits unless requested.
+- Autopilot will create local commits per phase/module; never push or rewrite history.
 
 ## Open / deferred
 
