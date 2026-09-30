@@ -1,19 +1,18 @@
 import BootstrapFeature
+import Combine
 import Dependencies
 import HomeFeature
 import Logging
-import Observation
 
 /// Composition root. Turns an `AppRoute` into a live `AppScreen`, wires the screen's output events
 /// and runs route-entry effects. Features never import this module (ADR 0002).
-@Observable
-public final class AppCoordinator {
+public final class AppCoordinator: ObservableObject {
     /// `nil` only while `init` runs; always set once `init` returns.
-    public private(set) var screen: AppScreen?
+    @Published public private(set) var screen: AppScreen?
 
     // The coordinator's own dependencies. `withDependencies(from: self)` propagates the context
     // through these, so keep at least one `@Dependency` here.
-    @ObservationIgnored @Dependency(\.logger) private var logger
+    @Dependency(\.logger) private var logger
 
     public init(initialRoute: AppRoute = .bootstrap) {
         navigate(to: initialRoute)

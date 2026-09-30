@@ -4,7 +4,7 @@ import SwiftUI
 /// Presentation only: renders `viewModel.state` and forwards input via `trigger`.
 /// No logic, no `Task`, no dependency access, no string lookups.
 public struct HomeView: View {
-    private let viewModel: HomeViewModel
+    @ObservedObject private var viewModel: HomeViewModel
 
     public init(viewModel: HomeViewModel) {
         self.viewModel = viewModel
@@ -27,4 +27,3 @@ public struct HomeView: View {
 #Preview("Default") {
     HomeView(viewModel: HomeViewModel())
 }
-

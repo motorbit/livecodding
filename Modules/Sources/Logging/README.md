@@ -11,7 +11,7 @@
 ## Usage
 
 ```swift
-@ObservationIgnored @Dependency(\.logger) private var logger
+@Dependency(\.logger) private var logger
 
 logger.info("Profile loaded", ["items": "\(items.count)"])
 logger.error(error, ["operation": "loadProfile"])

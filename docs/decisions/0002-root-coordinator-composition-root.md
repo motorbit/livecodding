@@ -9,7 +9,7 @@ Someone has to create the feature ViewModels, connect their outputs to navigatio
 
 ## Decision
 
-1. `AppCoordinator` is an `@Observable final class` in its own module, and it's the **composition root**. It's the only module that imports every top-level feature.
+1. `AppCoordinator` is an `ObservableObject` final class in its own module, and it's the **composition root**. Its published screen is observed by SwiftUI; it is the only module that imports every top-level feature.
 2. State:
    - `enum AppRoute: Equatable, Sendable` is a *value* describing where to go. It carries ids and context, never loaded data.
    - `enum AppScreen` has one case per route and carries the **live ViewModel**, e.g. `case home(HomeViewModel)`. The VM lives exactly as long as the screen.

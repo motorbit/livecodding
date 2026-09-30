@@ -1,7 +1,7 @@
+import Combine
 import Dependencies
 import L10n
 import Logging
-import Observation
 // >>> effect
 import __Client__
 // <<< effect
@@ -13,19 +13,18 @@ import __Client__
 /// - `trigger(_:)` is the only input. It's synchronous and called by the View only.
 /// - `onEvent` is the only output. It's a plain closure set by the parent after `init`.
 /// - `init` stores state and does nothing else: no dependency reads, no work.
-@Observable
-public final class __Feature__ViewModel {
-    public private(set) var state: __Feature__ViewState
+public final class __Feature__ViewModel: ObservableObject {
+    @Published public private(set) var state: __Feature__ViewState
     public var onEvent: ((__Feature__ViewModelEvent) -> Void)?
 
     // Dependencies: all declared here, at class level.
-    @ObservationIgnored @Dependency(\.logger) private var logger
+    @Dependency(\.logger) private var logger
     // >>> effect
-    @ObservationIgnored @Dependency(\.__client__) private var __client__
+    @Dependency(\.__client__) private var __client__
 
     /// Internal (not private) so tests can `await sut.loadTask?.value` instead of sleeping.
-    @ObservationIgnored var loadTask: Task<Void, Never>?
-    @ObservationIgnored private var loadGeneration = 0
+    var loadTask: Task<Void, Never>?
+    private var loadGeneration = 0
     // <<< effect
 
     public init(state: __Feature__ViewState = __Feature__ViewState()) {

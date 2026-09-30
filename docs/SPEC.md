@@ -59,7 +59,8 @@ English only for this exercise, using the existing String Catalog and typed `L10
 
 ## Kit options
 
-- `ios-project-bootstrap`: existing modular scaffold; minimum deployment is now iOS 16.0. Swift 6.2 is the compiler/toolchain requirement, independent of the deployment target. Keep APIs iOS 16-compatible or availability-guard newer APIs.
+- `ios-project-bootstrap`: existing modular scaffold; minimum deployment is iOS 17.0, matching the current Xcode project setting. Swift 6.2 is the compiler/toolchain requirement, independent of the deployment target. Keep APIs iOS 17-compatible or availability-guard newer APIs.
+- UI state observation uses Combine `ObservableObject` / `@Published` and SwiftUI `@ObservedObject` / `@StateObject` for consistency with the existing modular architecture.
 - `ios-feature-module`: `TaskBoardFeature` (top-level route, owns TaskDetail push and AddTask sheet), `TaskDetailFeature` (push child), `AddTaskFeature` (sheet child); all use async effects with `TaskClient`. No StateMaker required.
 - `ios-dependency-client`: new `TaskClient`, in-memory mock source, typed task/priority models; it does not depend on `NetworkClient`.
 - `ios-network-client`: existing `NetworkClient` includes JSON and Endpoint support, but is intentionally not used for this mock-only exercise.
@@ -73,7 +74,7 @@ English only for this exercise, using the existing String Catalog and typed `L10
 
 - Swift Testing for client and feature behavior: client CRUD and seeded data; list loading/empty/error/retry; add/edit/delete success and failure; completion success/failure; stale async-result protection; unsaved-edit discard; output wiring and host list updates.
 - Tests use deterministic injected clock/failure policies and client overrides; no `Task.sleep` and no real network access.
-- Build and run the app and package tests on the iPhone 18 Pro Max simulator (available iOS 27.0). `xcodebuild` is authorized for this task. Confirm the deployment target remains iOS 16.0.
+- Build and run the app and package tests on the iPhone 18 Pro Max simulator (available iOS 27.0). `xcodebuild` is authorized for this task. Confirm the deployment target remains iOS 17.0.
 - Keep the exercise focused on the MVP within the 60-minute challenge. Do not implement stretches until the core flows/states work.
 
 ## Execution
@@ -95,7 +96,7 @@ English only for this exercise, using the existing String Catalog and typed `L10
 - **Q2–Q4:** Use an in-memory async TaskClient mock; no persistence; inject delay/failure behavior.
 - **Q5–Q7:** Pessimistic mutations with retry; trimmed nonempty title, optional notes, Medium default; confirm delete from detail.
 - **Q8:** Discuss stretch goals after the core flow.
-- **Q9–Q11:** Existing DesignSystem tokens; iOS 16 minimum (superseding the repository's former iOS 26 floor); no analytics, environment, auth or storage.
+- **Q9–Q11:** Existing DesignSystem tokens; deployment minimum changed from the challenge's iOS 16+ allowance to iOS 17.0 to honor the selected project setting; no analytics, environment, auth or storage.
 - **Q12:** `xcodebuild` is allowed, superseding the earlier SwiftPM-only recommendation; use iPhone 18 Pro Max simulator.
 - **Q13–Q18:** Preserve API order; show completed tasks; edit on detail with explicit Save; keep confirmed data on failures; provide loading/empty/error states; all reads and writes may fail.
 - **Q19–Q21:** Confirm discard of dirty edits; disable active controls during writes; trim/reject blank titles, allow duplicates, no arbitrary max.

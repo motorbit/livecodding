@@ -1,7 +1,7 @@
+import Combine
 import Dependencies
 import L10n
 import Logging
-import Observation
 
 /// All of `Home`'s logic. MainActor via the module's default isolation (ADR 0005).
 ///
@@ -10,13 +10,12 @@ import Observation
 /// - `trigger(_:)` is the only input. It's synchronous and called by the View only.
 /// - `onEvent` is the only output. It's a plain closure set by the parent after `init`.
 /// - `init` stores state and does nothing else: no dependency reads, no work.
-@Observable
-public final class HomeViewModel {
-    public private(set) var state: HomeViewState
+public final class HomeViewModel: ObservableObject {
+    @Published public private(set) var state: HomeViewState
     public var onEvent: ((HomeViewModelEvent) -> Void)?
 
     // Dependencies: all declared here, at class level.
-    @ObservationIgnored @Dependency(\.logger) private var logger
+    @Dependency(\.logger) private var logger
 
     public init(state: HomeViewState = HomeViewState()) {
         self.state = state

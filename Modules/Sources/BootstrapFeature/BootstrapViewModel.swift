@@ -1,21 +1,20 @@
+import Combine
 import Dependencies
 import Logging
-import Observation
 
 /// Start-up work that must finish before the first real screen, e.g. restoring a session,
 /// fetching remote config or running migrations. It does nothing yet and finishes immediately.
 ///
 /// Contract (ADR 0003): `trigger(_:)` in, `onEvent` out, `init` stores state only.
-@Observable
-public final class BootstrapViewModel {
-    public private(set) var state: BootstrapViewState
+public final class BootstrapViewModel: ObservableObject {
+    @Published public private(set) var state: BootstrapViewState
     public var onEvent: ((BootstrapViewModelEvent) -> Void)?
 
-    @ObservationIgnored @Dependency(\.logger) private var logger
+    @Dependency(\.logger) private var logger
 
     /// Internal (not private) so tests can `await sut.setupTask?.value` instead of sleeping.
-    @ObservationIgnored var setupTask: Task<Void, Never>?
-    @ObservationIgnored private var setupGeneration = 0
+    var setupTask: Task<Void, Never>?
+    private var setupGeneration = 0
 
     public init(state: BootstrapViewState = BootstrapViewState()) {
         self.state = state

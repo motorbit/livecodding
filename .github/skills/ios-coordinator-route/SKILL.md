@@ -7,7 +7,7 @@ description: Adds or changes a top-level route in the root AppCoordinator (the c
 
 ## Purpose
 
-This skill wires a feature module into `Modules/Sources/AppCoordinator/`, following ADR 0002. The coordinator is a `@Observable` object that holds `screen: AppScreen?` (one live VM per case). Its only entry point is `navigate(to:)`:
+This skill wires a feature module into `Modules/Sources/AppCoordinator/`, following ADR 0002. The coordinator is an `ObservableObject` that holds a `@Published screen: AppScreen?` (one live VM per case). Its only entry point is `navigate(to:)`:
 
 ```
 navigate(to: route) → screen = makeScreen(for: route)   // pure: create VM + wire onEvent

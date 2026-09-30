@@ -69,7 +69,7 @@ When you run as a parallel worker, the orchestrator has already added the module
 
 | File | Notes |
 |---|---|
-| `templates/__Feature__ViewModel.swift` | `@Observable final class`; `trigger` / `onEvent`; `InternalAction` + `handle`; stored `loadTask` + generation guard |
+| `templates/__Feature__ViewModel.swift` | `ObservableObject final class` with `@Published state`; `trigger` / `onEvent`; `InternalAction` + `handle`; stored `loadTask` + generation guard |
 | `templates/__Feature__View.swift` | Renders state and forwards events, with `#Preview`s |
 | `templates/__Feature__ViewState.swift` | `Equatable` struct with defaults from L10n |
 | `templates/__Feature__ViewEvent.swift`, `__Feature__ViewModelEvent.swift` | Input / output enums |
@@ -160,7 +160,7 @@ Run **ios-dependency-client** with these defaults so you don't need another roun
   - A synchronous `trigger(_:)`.
   - A single plain `onEvent: ((Event) -> Void)?`. It isn't `@Sendable`, and it doesn't use `assumeIsolated`.
 - `init` has at most `state:` with a default value. It reads no dependencies and does no work.
-- All dependencies are `@ObservationIgnored @Dependency(\.x) private var x` at class level.
+- All dependencies are `@Dependency(\.x) private var x` at class level and are not `@Published`.
 - Async work:
   - Keep a stored `Task` and cancel it before a restart.
   - Use a generation counter, not a `Bool` flag.
@@ -186,6 +186,6 @@ Run **ios-dependency-client** with these defaults so you don't need another roun
 - The feature is reachable, either as a route in the coordinator or embedded in the host, and its `onEvent` is wired.
 - Tests cover: each output event, the load success and failure paths, and the stale-result race (effect = yes). For push: push, double-tap, pop, and child close.
 - **Verify proportionally:**
-  - Logic, Package or import changes: compile once with `cd Modules && swift build --build-tests --triple arm64-apple-ios16.0-simulator`. The package is iOS-only, so plain `swift test` targets macOS and fails on `@Observable`. Never run two SwiftPM commands at the same time, because they share the `.build` lock.
+  - Logic, Package or import changes: compile once with `cd Modules && swift build --build-tests --triple arm64-apple-ios17.0-simulator`. The package is iOS-only, so plain `swift test` targets macOS and fails on SwiftUI property wrappers and UIKit-dependent APIs. Never run two SwiftPM commands at the same time, because they share the `.build` lock.
   - Layout-only changes: no build. The user checks them in Xcode.
 - **Don't run `xcodebuild`** unless asked. Tell the user to build and run the tests in Xcode.
