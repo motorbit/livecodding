@@ -818,3 +818,170 @@ struct TaskBoardSwipeDeleteTests {
         await sut.rowTasks[firstID]?.value
     }
 }
+
+@MainActor
+struct TaskBoardSearchSortTests {
+    private static func item(_ title: String, _ priority: TaskPriority, done: Bool = false) -> TaskItem {
+        TaskItem(id: UUID(), title: title, priority: priority, isComplete: done)
+    }
+
+    private let items = [
+        item("Low A", .low),
+        item("High A", .high, done: true),
+        item("Medium A", .medium),
+        item("High B", .high),
+        item("Crème brûlée", .low, done: true),
+        item("Medium B", .medium, done: true),
+    ]
+
+    private func makeSUT(items: [TaskItem]? = nil) async -> TaskBoardViewModel {
+        let items = items ?? self.items
+        let sut = withDependencies {
+            makeDependencies(&$0)
+            $0.taskClient.fetchTasks = { items }
+        } operation: { TaskBoardViewModel() }
+        sut.trigger(.onAppear)
+        await sut.loadTask?.value
+        return sut
+    }
+
+    private func titles(_ sut: TaskBoardViewModel) -> [String] {
+        sut.state.rows.map(\.title)
+    }
+
+    @Test("""
+        Given loaded tasks,
+        When Priority sort is chosen,
+        Then rows go High → Low and ties keep API order
+        """)
+    func sortByPriorityIsStable() async {
+        let sut = await makeSUT()
+
+        sut.trigger(.sortChanged(.priority))
+
+        #expect(sut.state.sortOrder == .priority)
+        #expect(titles(sut) == ["High A", "High B", "Medium A", "Medium B", "Low A", "Crème brûlée"])
+    }
+
+    @Test("""
+        Given loaded tasks,
+        When Status sort is chosen and then Default,
+        Then incomplete rows come first in API order, and Default restores API order
+        """)
+    func sortByStatusThenDefault() async {
+        let sut = await makeSUT()
+
+        sut.trigger(.sortChanged(.status))
+        #expect(titles(sut) == ["Low A", "Medium A", "High B", "High A", "Crème brûlée", "Medium B"])
+
+        sut.trigger(.sortChanged(.default))
+        #expect(titles(sut) == items.map(\.title))
+    }
+
+    @Test("""
+        Given loaded tasks,
+        When the search text differs in case, diacritics and surrounding spaces,
+        Then matching titles are still found
+        """)
+    func searchIgnoresCaseDiacriticsAndWhitespace() async {
+        let sut = await makeSUT()
+
+        sut.trigger(.searchTextChanged("  CREME  "))
+        #expect(titles(sut) == ["Crème brûlée"])
+
+        sut.trigger(.searchTextChanged("   "))
+        #expect(titles(sut) == items.map(\.title))
+        #expect(!sut.state.isNoResults)
+    }
+
+    @Test("""
+        Given a search and a sort,
+        When both apply,
+        Then the filtered rows keep the sort order
+        """)
+    func searchAndSortCombine() async {
+        let sut = await makeSUT()
+
+        sut.trigger(.sortChanged(.priority))
+        sut.trigger(.searchTextChanged("b"))
+
+        #expect(titles(sut) == ["High B", "Medium B", "Crème brûlée"])
+    }
+
+    @Test("""
+        Given loaded tasks,
+        When nothing matches the search,
+        Then the board stays in content with the no-results flag, not empty
+        """)
+    func noResultsDiffersFromEmpty() async {
+        let sut = await makeSUT()
+
+        sut.trigger(.searchTextChanged("zzz"))
+
+        #expect(sut.state.phase == .content)
+        #expect(sut.state.rows.isEmpty)
+        #expect(sut.state.isNoResults)
+
+        let empty = await makeSUT(items: [])
+        empty.trigger(.searchTextChanged("zzz"))
+        #expect(empty.state.phase == .empty)
+        #expect(!empty.state.isNoResults)
+    }
+
+    @Test("""
+        Given an active Status sort and search,
+        When a completion toggle succeeds,
+        Then the row moves to its sorted position and search still applies
+        """)
+    func completionReordersUnderStatusSort() async {
+        let sut = await makeSUT()
+        sut.trigger(.sortChanged(.status))
+        sut.trigger(.searchTextChanged("a"))
+        let lowA = items[0].id
+
+        sut.trigger(.completionToggled(lowA))
+        await sut.rowTasks[lowA]?.value
+
+        #expect(titles(sut) == ["Medium A", "Low A", "High A"])
+    }
+
+    @Test("""
+        Given an active search,
+        When a new task is created from the Add sheet,
+        Then it appears only if it matches the search
+        """)
+    func createdTaskRespectsSearch() async {
+        let sut = await makeSUT()
+        sut.trigger(.searchTextChanged("high"))
+        sut.trigger(.addTapped)
+
+        sut.addViewModel?.onEvent?(.created(Self.item("Buy milk", .high)))
+        #expect(titles(sut) == ["High A", "High B"])
+
+        sut.trigger(.addTapped)
+        sut.addViewModel?.onEvent?(.created(Self.item("High C", .low)))
+        #expect(titles(sut) == ["High A", "High B", "High C"])
+    }
+
+    @Test("""
+        Given an active search,
+        When a matching row is swiped and undone,
+        Then it returns to the same filtered position
+        """)
+    func swipeUndoUnderSearch() async {
+        let sut = withDependencies {
+            makeDependencies(&$0)
+            $0.continuousClock = TestClock()
+            $0.taskClient.fetchTasks = { [items] in items }
+        } operation: { TaskBoardViewModel() }
+        sut.trigger(.onAppear)
+        await sut.loadTask?.value
+        sut.trigger(.searchTextChanged("high"))
+
+        sut.trigger(.deleteSwiped(items[1].id))
+        #expect(titles(sut) == ["High B"])
+
+        sut.trigger(.undoTapped)
+        #expect(titles(sut) == ["High A", "High B"])
+    }
+}

@@ -32,7 +32,33 @@ public struct TaskBoardView: View {
             }
             .animation(.default, value: viewModel.state.undo)
             .navigationTitle(viewModel.state.title)
+            .searchable(
+                text: Binding(
+                    get: { viewModel.state.searchText },
+                    set: { viewModel.trigger(.searchTextChanged($0)) }
+                ),
+                prompt: viewModel.state.searchPrompt
+            )
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Menu {
+                        Picker(
+                            viewModel.state.sortTitle,
+                            selection: Binding(
+                                get: { viewModel.state.sortOrder },
+                                set: { viewModel.trigger(.sortChanged($0)) }
+                            )
+                        ) {
+                            ForEach(viewModel.state.sortOptions) { option in
+                                Text(option.title).tag(option.order)
+                            }
+                        }
+                    } label: {
+                        Image(systemName: "arrow.up.arrow.down")
+                            .frame(minWidth: HitTarget.minimum, minHeight: HitTarget.minimum)
+                    }
+                    .accessibilityLabel(viewModel.state.sortTitle)
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         viewModel.trigger(.addTapped)
@@ -116,6 +142,21 @@ public struct TaskBoardView: View {
                     actionTitle: viewModel.state.addTitle,
                     action: .addTapped
                 )
+            }
+            .refreshable { await viewModel.refresh() }
+        case .content where viewModel.state.isNoResults:
+            ScrollView {
+                VStack(spacing: .sm) {
+                    Text(viewModel.state.noResultsTitle)
+                        .font(.dsHeadline)
+                        .foregroundStyle(Color.dsTextPrimary)
+                    Text(viewModel.state.noResultsMessage)
+                        .font(.dsBody)
+                        .foregroundStyle(Color.dsTextSecondary)
+                }
+                .multilineTextAlignment(.center)
+                .padding(.lg)
+                .frame(maxWidth: .infinity)
             }
             .refreshable { await viewModel.refresh() }
         case .content:

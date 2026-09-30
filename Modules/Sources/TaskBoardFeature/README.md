@@ -30,6 +30,14 @@ the toggle is disabled while in flight, the prior value stays on failure with an
 If a successful mutation races a fetch, the stale fetch result is discarded and the board fetches
 again so it cannot revert the confirmed mutation.
 
+## Search and sort
+
+Local only; never triggers a request. `rebuildRows()` stable-sorts `tasks` by `state.sortOrder`
+(`TaskSortOrder`: Default = API order, Priority = High → Low, Status = incomplete first; ties keep
+API order), then filters by the trimmed `searchText` with `localizedStandardContains` (case- and
+diacritic-insensitive). `isNoResults` (tasks exist, none match) shows "No matching tasks" inside the
+`.content` phase; `.empty` still means no tasks at all. Both reset on relaunch.
+
 ## Swipe to delete with undo
 
 The list is a plain `List`; a trailing swipe sends `.deleteSwiped(id)`. This is the one deliberate

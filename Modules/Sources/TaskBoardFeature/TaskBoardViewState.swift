@@ -45,6 +45,27 @@ public struct TaskBoardRowState: Equatable, Identifiable {
     }
 }
 
+/// Local list order; ties keep API order.
+public enum TaskSortOrder: CaseIterable, Equatable, Hashable {
+    /// API order (new tasks appended).
+    case `default`
+    /// High → Low.
+    case priority
+    /// Incomplete first.
+    case status
+}
+
+public struct TaskBoardSortOption: Equatable, Identifiable {
+    public var order: TaskSortOrder
+    public var title: String
+    public var id: TaskSortOrder { order }
+
+    public init(order: TaskSortOrder, title: String) {
+        self.order = order
+        self.title = title
+    }
+}
+
 /// Shown while a swiped deletion can still be undone.
 public struct TaskBoardUndoState: Equatable {
     public var message: String
@@ -62,6 +83,10 @@ public struct TaskBoardViewState: Equatable {
     public var isDetailDirty: Bool
     public var isDiscardConfirmationPresented: Bool
     public var undo: TaskBoardUndoState?
+    public var searchText: String
+    public var sortOrder: TaskSortOrder
+    /// Tasks exist but none match `searchText`.
+    public var isNoResults: Bool
 
     public var title: String
     public var addTitle: String
@@ -74,6 +99,11 @@ public struct TaskBoardViewState: Equatable {
     public var openDetailHint: String
     public var deleteTitle: String
     public var undoTitle: String
+    public var searchPrompt: String
+    public var sortTitle: String
+    public var sortOptions: [TaskBoardSortOption]
+    public var noResultsTitle: String
+    public var noResultsMessage: String
     public var discardTitle: String
     public var discardMessage: String
     public var discardConfirmTitle: String
@@ -87,6 +117,9 @@ public struct TaskBoardViewState: Equatable {
         isDetailDirty: Bool = false,
         isDiscardConfirmationPresented: Bool = false,
         undo: TaskBoardUndoState? = nil,
+        searchText: String = "",
+        sortOrder: TaskSortOrder = .default,
+        isNoResults: Bool = false,
         title: String = L10n.TaskBoard.title,
         addTitle: String = L10n.TaskBoard.add,
         loadingMessage: String = L10n.TaskBoard.loading,
@@ -98,6 +131,15 @@ public struct TaskBoardViewState: Equatable {
         openDetailHint: String = L10n.TaskBoard.openDetailHint,
         deleteTitle: String = L10n.TaskBoard.delete,
         undoTitle: String = L10n.TaskBoard.undo,
+        searchPrompt: String = L10n.TaskBoard.searchPrompt,
+        sortTitle: String = L10n.TaskBoard.sort,
+        sortOptions: [TaskBoardSortOption] = [
+            TaskBoardSortOption(order: .default, title: L10n.TaskBoard.sortDefault),
+            TaskBoardSortOption(order: .priority, title: L10n.TaskBoard.sortPriority),
+            TaskBoardSortOption(order: .status, title: L10n.TaskBoard.sortStatus),
+        ],
+        noResultsTitle: String = L10n.TaskBoard.noResultsTitle,
+        noResultsMessage: String = L10n.TaskBoard.noResultsMessage,
         discardTitle: String = L10n.TaskDetail.discardConfirmationTitle,
         discardMessage: String = L10n.TaskDetail.discardConfirmationMessage,
         discardConfirmTitle: String = L10n.TaskDetail.discardConfirmationDiscard,
@@ -110,6 +152,9 @@ public struct TaskBoardViewState: Equatable {
         self.isDetailDirty = isDetailDirty
         self.isDiscardConfirmationPresented = isDiscardConfirmationPresented
         self.undo = undo
+        self.searchText = searchText
+        self.sortOrder = sortOrder
+        self.isNoResults = isNoResults
         self.title = title
         self.addTitle = addTitle
         self.loadingMessage = loadingMessage
@@ -121,6 +166,11 @@ public struct TaskBoardViewState: Equatable {
         self.openDetailHint = openDetailHint
         self.deleteTitle = deleteTitle
         self.undoTitle = undoTitle
+        self.searchPrompt = searchPrompt
+        self.sortTitle = sortTitle
+        self.sortOptions = sortOptions
+        self.noResultsTitle = noResultsTitle
+        self.noResultsMessage = noResultsMessage
         self.discardTitle = discardTitle
         self.discardMessage = discardMessage
         self.discardConfirmTitle = discardConfirmTitle
