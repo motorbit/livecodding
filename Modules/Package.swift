@@ -70,12 +70,12 @@ let package = Package(
         // Composition root: the only module that imports every feature.
         uiModule(.appCoordinator, dependencies: [
             .module(.bootstrapFeature),
-            .module(.homeFeature),
+            .module(.taskBoardFeature),
             .module(.logging),
             .dependencies,
         ], testDependencies: [
             .module(.bootstrapFeature),
-            .module(.homeFeature),
+            .module(.taskBoardFeature),
             .module(.logging),
         ]),
 

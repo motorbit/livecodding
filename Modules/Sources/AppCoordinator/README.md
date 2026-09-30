@@ -15,8 +15,8 @@ The composition root (ADR 0002). It turns an `AppRoute` into a live `AppScreen`,
 
 | Route | Screen | Entry effects | Outputs handled |
 |---|---|---|---|
-| `.bootstrap` (initial) | `BootstrapView` | none | `.finished` → `.home` |
-| `.home` | `HomeView` | none | `.closeRequested` → no-op (root screen) |
+| `.bootstrap` (initial) | `BootstrapView` | none | `.finished` → `.taskBoard` |
+| `.taskBoard` | `TaskBoardView` | none | none (root screen) |
 
 Keep this table in sync when adding a route (**ios-coordinator-route**).
 
