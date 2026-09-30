@@ -52,6 +52,7 @@ The list is a plain `List`; a trailing swipe sends `.deleteSwiped(id)`. This is 
 exception to pessimistic updates (SPEC R2):
 
 - The row hides immediately and an undo banner appears for `undoWindow` (4 s).
+  VoiceOver announces the banner message when it appears.
 - `.undoTapped` restores the row at its original index; no request is sent.
 - When the window expires, `deleteTask(id:)` is sent while the row stays hidden. Swiping another row
   commits the pending one immediately (a single undo slot).

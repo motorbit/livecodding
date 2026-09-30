@@ -247,18 +247,17 @@ struct TaskDetailDueDateTests {
         try! Date("\(day)T00:00:00Z", strategy: .iso8601)
     }
 
-    private func makeSUT(task: TaskItem, update: (@Sendable (TaskItem) async throws -> TaskItem)? = nil) -> TaskDetailViewModel {
-        withDependencies {
-            makeDependencies(&$0)
-            // 2025-03-11 00:30 in Tokyo (still 2025-03-10 in UTC).
-            $0.date.now = try! Date("2025-03-10T15:30:00Z", strategy: .iso8601)
-            var calendar = Calendar(identifier: .gregorian)
-            calendar.timeZone = TimeZone(identifier: "Asia/Tokyo")!
-            $0.calendar = calendar
-            if let update { $0.taskClient.updateTask = update }
-        } operation: {
-            TaskDetailViewModel(state: TaskDetailViewState(task: task))
-        }
+    private func dueDateDependencies(
+        _ dependencies: inout DependencyValues,
+        update: (@Sendable (TaskItem) async throws -> TaskItem)? = nil
+    ) {
+        makeDependencies(&dependencies)
+        // 2025-03-11 00:30 in Tokyo (still 2025-03-10 in UTC).
+        dependencies.date.now = try! Date("2025-03-10T15:30:00Z", strategy: .iso8601)
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "Asia/Tokyo")!
+        dependencies.calendar = calendar
+        if let update { dependencies.taskClient.updateTask = update }
     }
 
     @Test("""
@@ -267,7 +266,11 @@ struct TaskDetailDueDateTests {
         Then the local today is used and dirty follows the change
         """)
     func addingAndClearingDueDateTracksDirty() {
-        let sut = makeSUT(task: sampleTask())
+        let sut = withDependencies {
+            dueDateDependencies(&$0)
+        } operation: {
+            TaskDetailViewModel(state: TaskDetailViewState(task: sampleTask()))
+        }
         var events: [TaskDetailViewModelEvent] = []
         sut.onEvent = { events.append($0) }
 
@@ -289,7 +292,11 @@ struct TaskDetailDueDateTests {
     func changingDueDateTracksDirty() {
         var task = sampleTask()
         task.dueDate = utcDay("2025-03-20")
-        let sut = makeSUT(task: task)
+        let sut = withDependencies {
+            dueDateDependencies(&$0)
+        } operation: {
+            TaskDetailViewModel(state: TaskDetailViewState(task: task))
+        }
         #expect(sut.state.hasDueDate)
 
         sut.trigger(.dueDateChanged(try! Date("2025-03-21T09:00:00Z", strategy: .iso8601)))
@@ -309,10 +316,14 @@ struct TaskDetailDueDateTests {
         var task = sampleTask()
         task.dueDate = utcDay("2025-03-20")
         let submitted = LockIsolated<TaskItem?>(nil)
-        let sut = makeSUT(task: task, update: { item in
-            submitted.setValue(item)
-            return item
-        })
+        let sut = withDependencies {
+            dueDateDependencies(&$0, update: { item in
+                submitted.setValue(item)
+                return item
+            })
+        } operation: {
+            TaskDetailViewModel(state: TaskDetailViewState(task: task))
+        }
 
         sut.trigger(.dueDateToggled(false))
         sut.trigger(.saveTapped)

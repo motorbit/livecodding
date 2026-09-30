@@ -636,23 +636,19 @@ struct TaskBoardSwipeDeleteTests {
     private let clock = TestClock()
     private let deleteCalls = LockIsolated<[UUID]>([])
 
-    private func makeSUT(
+    private func swipeDependencies(
+        _ dependencies: inout DependencyValues,
         fetch: @escaping @Sendable () async throws -> [TaskItem] = { TaskItem.samples },
         delete: (@Sendable (UUID) async throws -> Void)? = nil
-    ) async -> TaskBoardViewModel {
+    ) {
         let deleteCalls = deleteCalls
-        let sut = withDependencies {
-            makeDependencies(&$0)
-            $0.continuousClock = clock
-            $0.taskClient.fetchTasks = fetch
-            $0.taskClient.deleteTask = { id in
-                deleteCalls.withValue { $0.append(id) }
-                try await delete?(id)
-            }
-        } operation: { TaskBoardViewModel() }
-        sut.trigger(.onAppear)
-        await sut.loadTask?.value
-        return sut
+        makeDependencies(&dependencies)
+        dependencies.continuousClock = clock
+        dependencies.taskClient.fetchTasks = fetch
+        dependencies.taskClient.deleteTask = { id in
+            deleteCalls.withValue { $0.append(id) }
+            try await delete?(id)
+        }
     }
 
     @Test("""
@@ -661,7 +657,11 @@ struct TaskBoardSwipeDeleteTests {
         Then it is hidden, the undo banner names it and no request is sent yet
         """)
     func swipeHidesRowAndShowsUndo() async {
-        let sut = await makeSUT()
+        let sut = withDependencies {
+            swipeDependencies(&$0)
+        } operation: { TaskBoardViewModel() }
+        sut.trigger(.onAppear)
+        await sut.loadTask?.value
 
         sut.trigger(.deleteSwiped(firstID))
 
@@ -679,7 +679,11 @@ struct TaskBoardSwipeDeleteTests {
         Then the row returns to its position and no delete is ever sent
         """)
     func undoRestoresWithoutRequest() async {
-        let sut = await makeSUT()
+        let sut = withDependencies {
+            swipeDependencies(&$0)
+        } operation: { TaskBoardViewModel() }
+        sut.trigger(.onAppear)
+        await sut.loadTask?.value
         sut.trigger(.deleteSwiped(dentistID))
         let undoTask = sut.undoTask
 
@@ -698,7 +702,11 @@ struct TaskBoardSwipeDeleteTests {
         Then the delete is sent once and the row stays removed
         """)
     func expiryCommitsDelete() async {
-        let sut = await makeSUT()
+        let sut = withDependencies {
+            swipeDependencies(&$0)
+        } operation: { TaskBoardViewModel() }
+        sut.trigger(.onAppear)
+        await sut.loadTask?.value
         sut.trigger(.deleteSwiped(firstID))
         let undoTask = sut.undoTask
 
@@ -718,10 +726,14 @@ struct TaskBoardSwipeDeleteTests {
         """)
     func failureRestoresRowAndRetryDeletes() async {
         let attempts = LockIsolated(0)
-        let sut = await makeSUT(delete: { _ in
-            let attempt = attempts.withValue { $0 += 1; return $0 }
-            if attempt == 1 { throw TestError() }
-        })
+        let sut = withDependencies {
+            swipeDependencies(&$0, delete: { _ in
+                let attempt = attempts.withValue { $0 += 1; return $0 }
+                if attempt == 1 { throw TestError() }
+            })
+        } operation: { TaskBoardViewModel() }
+        sut.trigger(.onAppear)
+        await sut.loadTask?.value
         sut.trigger(.deleteSwiped(firstID))
         let undoTask = sut.undoTask
         await clock.advance(by: TaskBoardViewModel.undoWindow)
@@ -745,7 +757,11 @@ struct TaskBoardSwipeDeleteTests {
         Then the first delete is sent immediately and Undo applies only to the second
         """)
     func secondSwipeCommitsFirst() async {
-        let sut = await makeSUT()
+        let sut = withDependencies {
+            swipeDependencies(&$0)
+        } operation: { TaskBoardViewModel() }
+        sut.trigger(.onAppear)
+        await sut.loadTask?.value
         sut.trigger(.deleteSwiped(firstID))
 
         sut.trigger(.deleteSwiped(dentistID))
@@ -763,7 +779,11 @@ struct TaskBoardSwipeDeleteTests {
         Then the row stays hidden and Undo still restores it in place
         """)
     func reloadKeepsPendingRowHidden() async {
-        let sut = await makeSUT()
+        let sut = withDependencies {
+            swipeDependencies(&$0)
+        } operation: { TaskBoardViewModel() }
+        sut.trigger(.onAppear)
+        await sut.loadTask?.value
         sut.trigger(.deleteSwiped(firstID))
 
         await sut.refresh()
@@ -780,7 +800,11 @@ struct TaskBoardSwipeDeleteTests {
         """)
     func swipingLastRowShowsEmptyUntilUndo() async {
         let only = TaskItem.samples[0]
-        let sut = await makeSUT(fetch: { [only] })
+        let sut = withDependencies {
+            swipeDependencies(&$0, fetch: { [only] })
+        } operation: { TaskBoardViewModel() }
+        sut.trigger(.onAppear)
+        await sut.loadTask?.value
 
         sut.trigger(.deleteSwiped(only.id))
         #expect(sut.state.phase == .empty)
@@ -834,15 +858,10 @@ struct TaskBoardSearchSortTests {
         item("Medium B", .medium, done: true),
     ]
 
-    private func makeSUT(items: [TaskItem]? = nil) async -> TaskBoardViewModel {
+    private func searchDependencies(_ dependencies: inout DependencyValues, items: [TaskItem]? = nil) {
         let items = items ?? self.items
-        let sut = withDependencies {
-            makeDependencies(&$0)
-            $0.taskClient.fetchTasks = { items }
-        } operation: { TaskBoardViewModel() }
-        sut.trigger(.onAppear)
-        await sut.loadTask?.value
-        return sut
+        makeDependencies(&dependencies)
+        dependencies.taskClient.fetchTasks = { items }
     }
 
     private func titles(_ sut: TaskBoardViewModel) -> [String] {
@@ -855,7 +874,11 @@ struct TaskBoardSearchSortTests {
         Then rows go High → Low and ties keep API order
         """)
     func sortByPriorityIsStable() async {
-        let sut = await makeSUT()
+        let sut = withDependencies {
+            searchDependencies(&$0)
+        } operation: { TaskBoardViewModel() }
+        sut.trigger(.onAppear)
+        await sut.loadTask?.value
 
         sut.trigger(.sortChanged(.priority))
 
@@ -869,7 +892,11 @@ struct TaskBoardSearchSortTests {
         Then incomplete rows come first in API order, and Default restores API order
         """)
     func sortByStatusThenDefault() async {
-        let sut = await makeSUT()
+        let sut = withDependencies {
+            searchDependencies(&$0)
+        } operation: { TaskBoardViewModel() }
+        sut.trigger(.onAppear)
+        await sut.loadTask?.value
 
         sut.trigger(.sortChanged(.status))
         #expect(titles(sut) == ["Low A", "Medium A", "High B", "High A", "Crème brûlée", "Medium B"])
@@ -884,7 +911,11 @@ struct TaskBoardSearchSortTests {
         Then matching titles are still found
         """)
     func searchIgnoresCaseDiacriticsAndWhitespace() async {
-        let sut = await makeSUT()
+        let sut = withDependencies {
+            searchDependencies(&$0)
+        } operation: { TaskBoardViewModel() }
+        sut.trigger(.onAppear)
+        await sut.loadTask?.value
 
         sut.trigger(.searchTextChanged("  CREME  "))
         #expect(titles(sut) == ["Crème brûlée"])
@@ -900,7 +931,11 @@ struct TaskBoardSearchSortTests {
         Then the filtered rows keep the sort order
         """)
     func searchAndSortCombine() async {
-        let sut = await makeSUT()
+        let sut = withDependencies {
+            searchDependencies(&$0)
+        } operation: { TaskBoardViewModel() }
+        sut.trigger(.onAppear)
+        await sut.loadTask?.value
 
         sut.trigger(.sortChanged(.priority))
         sut.trigger(.searchTextChanged("b"))
@@ -914,7 +949,11 @@ struct TaskBoardSearchSortTests {
         Then the board stays in content with the no-results flag, not empty
         """)
     func noResultsDiffersFromEmpty() async {
-        let sut = await makeSUT()
+        let sut = withDependencies {
+            searchDependencies(&$0)
+        } operation: { TaskBoardViewModel() }
+        sut.trigger(.onAppear)
+        await sut.loadTask?.value
 
         sut.trigger(.searchTextChanged("zzz"))
 
@@ -922,7 +961,11 @@ struct TaskBoardSearchSortTests {
         #expect(sut.state.rows.isEmpty)
         #expect(sut.state.isNoResults)
 
-        let empty = await makeSUT(items: [])
+        let empty = withDependencies {
+            searchDependencies(&$0, items: [])
+        } operation: { TaskBoardViewModel() }
+        empty.trigger(.onAppear)
+        await empty.loadTask?.value
         empty.trigger(.searchTextChanged("zzz"))
         #expect(empty.state.phase == .empty)
         #expect(!empty.state.isNoResults)
@@ -934,7 +977,11 @@ struct TaskBoardSearchSortTests {
         Then the row moves to its sorted position and search still applies
         """)
     func completionReordersUnderStatusSort() async {
-        let sut = await makeSUT()
+        let sut = withDependencies {
+            searchDependencies(&$0)
+        } operation: { TaskBoardViewModel() }
+        sut.trigger(.onAppear)
+        await sut.loadTask?.value
         sut.trigger(.sortChanged(.status))
         sut.trigger(.searchTextChanged("a"))
         let lowA = items[0].id
@@ -951,7 +998,11 @@ struct TaskBoardSearchSortTests {
         Then it appears only if it matches the search
         """)
     func createdTaskRespectsSearch() async {
-        let sut = await makeSUT()
+        let sut = withDependencies {
+            searchDependencies(&$0)
+        } operation: { TaskBoardViewModel() }
+        sut.trigger(.onAppear)
+        await sut.loadTask?.value
         sut.trigger(.searchTextChanged("high"))
         sut.trigger(.addTapped)
 
@@ -996,20 +1047,15 @@ struct TaskBoardDueDateTests {
         TaskItem(id: UUID(), title: title, priority: .medium, isComplete: done, dueDate: due.map(utcDay))
     }
 
-    private func makeSUT(_ items: [TaskItem]) async -> TaskBoardViewModel {
-        let sut = withDependencies {
-            makeDependencies(&$0)
-            // 2025-03-10 23:30 in Los Angeles: local today is 2025-03-10 although UTC is already the 11th.
-            $0.date.now = try! Date("2025-03-11T06:30:00Z", strategy: .iso8601)
-            var calendar = Calendar(identifier: .gregorian)
-            calendar.timeZone = TimeZone(identifier: "America/Los_Angeles")!
-            $0.calendar = calendar
-            $0.locale = Locale(identifier: "en_US")
-            $0.taskClient.fetchTasks = { items }
-        } operation: { TaskBoardViewModel() }
-        sut.trigger(.onAppear)
-        await sut.loadTask?.value
-        return sut
+    private func dueDateDependencies(_ dependencies: inout DependencyValues, _ items: [TaskItem]) {
+        makeDependencies(&dependencies)
+        // 2025-03-10 23:30 in Los Angeles: local today is 2025-03-10 although UTC is already the 11th.
+        dependencies.date.now = try! Date("2025-03-11T06:30:00Z", strategy: .iso8601)
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "America/Los_Angeles")!
+        dependencies.calendar = calendar
+        dependencies.locale = Locale(identifier: "en_US")
+        dependencies.taskClient.fetchTasks = { items }
     }
 
     @Test("""
@@ -1018,14 +1064,18 @@ struct TaskBoardDueDateTests {
         Then rows show relative due text and only past ones are overdue
         """)
     func relativeTextForIncompleteTasks() async {
-        let sut = await makeSUT([
-            Self.item("none", due: nil),
-            Self.item("today", due: "2025-03-10"),
-            Self.item("tomorrow", due: "2025-03-11"),
-            Self.item("in3", due: "2025-03-13"),
-            Self.item("yesterday", due: "2025-03-09"),
-            Self.item("ago2", due: "2025-03-08"),
-        ])
+        let sut = withDependencies {
+            dueDateDependencies(&$0, [
+                Self.item("none", due: nil),
+                Self.item("today", due: "2025-03-10"),
+                Self.item("tomorrow", due: "2025-03-11"),
+                Self.item("in3", due: "2025-03-13"),
+                Self.item("yesterday", due: "2025-03-09"),
+                Self.item("ago2", due: "2025-03-08"),
+            ])
+        } operation: { TaskBoardViewModel() }
+        sut.trigger(.onAppear)
+        await sut.loadTask?.value
 
         #expect(sut.state.rows.map(\.dueText) == [
             nil,
@@ -1044,11 +1094,15 @@ struct TaskBoardDueDateTests {
         Then rows show plain past due text without overdue styling
         """)
     func completedTasksAreNeverOverdue() async {
-        let sut = await makeSUT([
-            Self.item("yesterday", due: "2025-03-09", done: true),
-            Self.item("ago5", due: "2025-03-05", done: true),
-            Self.item("today", due: "2025-03-10", done: true),
-        ])
+        let sut = withDependencies {
+            dueDateDependencies(&$0, [
+                Self.item("yesterday", due: "2025-03-09", done: true),
+                Self.item("ago5", due: "2025-03-05", done: true),
+                Self.item("today", due: "2025-03-10", done: true),
+            ])
+        } operation: { TaskBoardViewModel() }
+        sut.trigger(.onAppear)
+        await sut.loadTask?.value
 
         #expect(sut.state.rows.map(\.dueText) == ["Due yesterday", "Due 5 days ago", "Due today"])
         #expect(sut.state.rows.allSatisfy { !$0.isOverdue })
@@ -1061,7 +1115,11 @@ struct TaskBoardDueDateTests {
         """)
     func completingClearsOverdue() async {
         let overdue = Self.item("late", due: "2025-03-01")
-        let sut = await makeSUT([overdue])
+        let sut = withDependencies {
+            dueDateDependencies(&$0, [overdue])
+        } operation: { TaskBoardViewModel() }
+        sut.trigger(.onAppear)
+        await sut.loadTask?.value
         #expect(sut.state.rows[0].isOverdue)
 
         sut.trigger(.completionToggled(overdue.id))

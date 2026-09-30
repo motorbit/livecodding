@@ -173,15 +173,13 @@ struct AddTaskDueDateTests {
         try! Date("\(day)T00:00:00Z", strategy: .iso8601)
     }
 
-    private func makeSUT(spy: CreateTaskSpy) -> AddTaskViewModel {
-        withDependencies {
-            makeDependencies(&$0)
-            $0.date.now = now
-            var calendar = Calendar(identifier: .gregorian)
-            calendar.timeZone = TimeZone(identifier: "America/Los_Angeles")!
-            $0.calendar = calendar
-            $0.taskClient.createTask = { try await spy.createTask($0) }
-        } operation: { AddTaskViewModel() }
+    private func dueDateDependencies(_ dependencies: inout DependencyValues, spy: CreateTaskSpy) {
+        makeDependencies(&dependencies)
+        dependencies.date.now = now
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "America/Los_Angeles")!
+        dependencies.calendar = calendar
+        dependencies.taskClient.createTask = { try await spy.createTask($0) }
     }
 
     @Test("""
@@ -190,7 +188,9 @@ struct AddTaskDueDateTests {
         Then the date defaults to the local today as a UTC day
         """)
     func toggleOnDefaultsToLocalToday() {
-        let sut = makeSUT(spy: CreateTaskSpy(responses: []))
+        let sut = withDependencies {
+            dueDateDependencies(&$0, spy: CreateTaskSpy(responses: []))
+        } operation: { AddTaskViewModel() }
 
         sut.trigger(.dueDateToggled(true))
 
@@ -205,7 +205,9 @@ struct AddTaskDueDateTests {
         """)
     func savedDraftCarriesDueDate() async {
         let spy = CreateTaskSpy(responses: [.success(TaskItem(id: UUID(), title: "T", priority: .medium))])
-        let sut = makeSUT(spy: spy)
+        let sut = withDependencies {
+            dueDateDependencies(&$0, spy: spy)
+        } operation: { AddTaskViewModel() }
 
         sut.trigger(.titleChanged("T"))
         sut.trigger(.dueDateToggled(true))
@@ -225,7 +227,9 @@ struct AddTaskDueDateTests {
         """)
     func toggleOffClearsDueDate() async {
         let spy = CreateTaskSpy(responses: [.success(TaskItem(id: UUID(), title: "T", priority: .medium))])
-        let sut = makeSUT(spy: spy)
+        let sut = withDependencies {
+            dueDateDependencies(&$0, spy: spy)
+        } operation: { AddTaskViewModel() }
 
         sut.trigger(.titleChanged("T"))
         sut.trigger(.dueDateToggled(true))
