@@ -1,0 +1,3 @@
+kit: /Users/amakarov/Documents/Skills/ios-starter
+version: 0afd78c
+installed: 2026-09-30T11:57:05Z

@@ -1,0 +1,13 @@
+// Environment.xcconfig: build-time environment values. Assign it per build configuration
+// (Project ▸ Info ▸ Configurations). Copy it to Environment-Debug.xcconfig /
+// Environment-Release.xcconfig if the values differ per configuration.
+//
+// xcconfig treats `//` as a comment, so URLs are written WITHOUT the scheme. The Swift parser adds
+// `https://`. Non-secret values only: everything here ends up in the app binary.
+
+APP_ENVIRONMENT = nonProd
+
+API_BASE_HOST_PROD = api.example.com
+API_BASE_HOST_NONPROD = api.nonprod.example.com
+
+// CI can override any value: xcodebuild … APP_ENVIRONMENT=prod

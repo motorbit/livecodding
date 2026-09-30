@@ -1,0 +1,59 @@
+{
+  "configurations" : [
+    {
+      "id" : "334440D0-5683-4432-AB48-42A9FBF64BF3",
+      "name" : "Test Scheme Action",
+      "options" : {
+
+      }
+    }
+  ],
+  "defaultOptions" : {
+    "codeCoverage" : false,
+    "performanceAntipatternCheckerEnabled" : true,
+    "targetForVariableExpansion" : {
+      "containerPath" : "container:livecodding.xcodeproj",
+      "identifier" : "000000000000000100000000",
+      "name" : "livecodding"
+    },
+    "testInteropMode" : "complete"
+  },
+  "testTargets" : [
+    {
+      "target" : {
+        "containerPath" : "container:Modules",
+        "identifier" : "AppCoordinatorTests",
+        "name" : "AppCoordinatorTests"
+      }
+    },
+    {
+      "target" : {
+        "containerPath" : "container:Modules",
+        "identifier" : "BootstrapFeatureTests",
+        "name" : "BootstrapFeatureTests"
+      }
+    },
+    {
+      "target" : {
+        "containerPath" : "container:Modules",
+        "identifier" : "HomeFeatureTests",
+        "name" : "HomeFeatureTests"
+      }
+    },
+    {
+      "target" : {
+        "containerPath" : "container:Modules",
+        "identifier" : "NetworkClientTests",
+        "name" : "NetworkClientTests"
+      }
+    },
+    {
+      "target" : {
+        "containerPath" : "container:Modules",
+        "identifier" : "LoggingTests",
+        "name" : "LoggingTests"
+      }
+    }
+  ],
+  "version" : 1
+}
