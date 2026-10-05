@@ -3,8 +3,8 @@
 Data layer for the Task Board. Features use only the public `TaskClient` (domain `TaskItem` / `TaskDraft`).
 
 ```
-Feature VM ──▶ TaskClient (repository) ──▶ TaskNetworkClient (DTOs) ──▶ MockNetworkClient (actor)
-               DTO ↔ domain, error mapping     network boundary            in-memory "backend"
+Feature VM ──▶ TaskClient (repository) ──▶ TaskNetworkClient (DTOs) ──┬─▶ MockNetworkClient (actor, `local`)
+               DTO ↔ domain, error mapping     network boundary          └─▶ HTTP via NetworkClient (`dev`/`prod`)
 ```
 
 ## TaskClient (public)
@@ -16,16 +16,19 @@ Feature VM ──▶ TaskClient (repository) ──▶ TaskNetworkClient (DTOs) 
 | `updateTask` | `(TaskItem) async throws -> TaskItem` |
 | `deleteTask` | `(UUID) async throws -> Void` |
 
-Errors: `TaskClientError.validation` (blank title), `.notFound`, `.unavailable` (server failure or malformed response). `CancellationError` passes through.
+Errors: `TaskClientError.validation` (blank title), `.notFound`, `.unavailable` (server failure, no connection, malformed response or no base URL configured). `CancellationError` passes through.
 
 - `liveValue` / `previewValue`: `TaskClient.repository`, which resolves `\.taskNetworkClient` per call.
 - `testValue`: unimplemented. Feature tests override its endpoints.
 
 ## TaskNetworkClient (internal)
 
-DTO-level CRUD (`TaskDTO`, `TaskDraftDTO`) throwing `TaskNetworkError` (`.badRequest`, `.notFound`, `.serverError`).
+DTO-level CRUD (`TaskDTO`, `TaskDraftDTO`) throwing `TaskNetworkError` (`.badRequest`, `.notFound`, `.serverError`, `.transport`).
 
-- `liveValue`: `.mock(policy: .live)`. **Replace this to talk to a real backend.** Nothing else changes.
+- `liveValue`: `.environmentBacked(mock: .mock(policy: .live))`. On **every call** it reads `\.environmentClient.current().apiBackend`:
+  - `.mock` → the shared `MockNetworkClient` (one instance per process, so its state survives switches);
+  - `.remote(url)` → `.http(baseURL:)` (`TaskNetworkClient+HTTP.swift`): `GET/POST tasks`, `PUT/DELETE tasks/{id}` through `\.networkClient`, off the main actor. 400 → `.badRequest`, 404 → `.notFound`, other statuses → `.serverError`, no response or undecodable body → `.transport`, cancellation → `CancellationError`;
+  - `.notConfigured` → logs and throws `EnvironmentError.apiBaseURLMissing`.
 - `previewValue`: `.mock(policy: .instant)` (no latency, no failures).
 - `testValue`: unimplemented. Tests opt in with `$0.taskNetworkClient = .mock(policy: …)` or per-endpoint overrides.
 

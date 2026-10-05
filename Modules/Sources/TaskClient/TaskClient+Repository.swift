@@ -45,7 +45,7 @@ extension TaskClient {
             switch error {
             case .badRequest: throw TaskClientError.validation
             case .notFound: throw TaskClientError.notFound
-            case .serverError: throw TaskClientError.unavailable
+            case .serverError, .transport: throw TaskClientError.unavailable
             }
         } catch {
             throw TaskClientError.unavailable
