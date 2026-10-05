@@ -5,7 +5,10 @@ DB      ?= ./tasks.db
 VOLUME  ?= taskapi-data
 ARGS    ?=
 
-.PHONY: run run-empty run-sqlite run-chaos test lint build docker-build docker-run
+.PHONY: start run run-empty run-sqlite run-chaos test lint build docker-build docker-run
+
+start: ## Interactive: ensure Colima, pick a configuration, run in Docker, print the port.
+	./scripts/start.sh
 
 run: ## In-memory store, seeded on start.
 	go run ./cmd/taskapi --addr=:$(PORT) $(ARGS)

@@ -30,6 +30,7 @@ in-memory `MockNetworkClient` (`Modules/Sources/TaskClient`), so the app can swi
 
 ```bash
 cd backend
+make start        # interactive Docker run on Colima (see below)
 make run          # in-memory, seeded, :8080
 make run-empty    # in-memory, no tasks (--seed=empty)
 make run-sqlite   # SQLite at ./tasks.db (DB=…), survives restarts
@@ -39,6 +40,28 @@ make lint         # go vet + gofmt check
 make docker-build # image taskapi:dev
 make docker-run   # memory store; add ARGS=--store=sqlite to use the taskapi-data volume
 ```
+
+### `make start` / `scripts/start.sh`
+
+This is the quickest way to run the API in Docker on [Colima](https://github.com/abiosoft/colima):
+
+1. It starts Colima if it isn't running.
+2. It asks for the store (`memory`/`sqlite`), the initial data (`filled`/`empty`), chaos (`off`/`on`),
+   the log format and the port (default `8080`).
+3. It builds `taskapi:dev` if the image is missing (`REBUILD=1` forces a rebuild).
+4. It replaces any previous `taskapi` container, and picks the next free port if yours is busy.
+5. It waits for `/healthz`, then prints the port on stdout. Everything else goes to stderr.
+
+Preset any answer to skip its prompt:
+
+```bash
+PORT=$(STORE=sqlite SEED=empty CHAOS=off LOG_FORMAT=text PORT=8080 ./scripts/start.sh)
+curl localhost:$PORT/tasks
+docker logs -f taskapi      # follow logs
+docker rm -f taskapi        # stop
+```
+
+sqlite data lives on the `taskapi-data` volume.
 
 Override the port with `PORT=9090`. Pass extra flags with `ARGS="--log-format=json"`.
 
