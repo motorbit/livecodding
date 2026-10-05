@@ -17,6 +17,7 @@ import (
 
 	"github.com/motorbit/livecodding/backend/internal/httpapi"
 	"github.com/motorbit/livecodding/backend/internal/store"
+	"github.com/motorbit/livecodding/backend/internal/task"
 )
 
 const shutdownTimeout = 10 * time.Second
@@ -26,6 +27,7 @@ type config struct {
 	store     string
 	db        string
 	logFormat string
+	seed      string
 	chaos     httpapi.Chaos
 }
 
@@ -65,7 +67,7 @@ func run(args []string, stderr io.Writer) error {
 
 	errc := make(chan error, 1)
 	go func() {
-		logger.Info("listening", "addr", cfg.addr, "store", cfg.store,
+		logger.Info("listening", "addr", cfg.addr, "store", cfg.store, "seed", cfg.seed,
 			"chaos", cfg.chaos.Enabled(),
 			"read_latency", cfg.chaos.ReadLatency.String(),
 			"write_latency", cfg.chaos.WriteLatency.String(),
@@ -105,6 +107,7 @@ func parseConfig(args []string, getenv func(string) string, output io.Writer) (c
 	fs.StringVar(&cfg.addr, "addr", env("ADDR", ":8080"), "listen address (env ADDR)")
 	fs.StringVar(&cfg.store, "store", env("STORE", "memory"), "storage backend: memory or sqlite (env STORE)")
 	fs.StringVar(&cfg.db, "db", env("DB", "./tasks.db"), "sqlite database path (env DB)")
+	fs.StringVar(&cfg.seed, "seed", env("SEED", "filled"), "initial data: filled (challenge tasks) or empty (env SEED)")
 	fs.StringVar(&cfg.logFormat, "log-format", env("LOG_FORMAT", "text"), "log format: text or json (env LOG_FORMAT)")
 	fs.StringVar(&readLatency, "read-latency", env("READ_LATENCY", ""), "GET /tasks latency band, e.g. 300ms-800ms (env READ_LATENCY)")
 	fs.StringVar(&writeLatency, "write-latency", env("WRITE_LATENCY", ""), "POST/PUT/DELETE latency band, e.g. 100ms-300ms (env WRITE_LATENCY)")
@@ -132,6 +135,11 @@ func parseConfig(args []string, getenv func(string) string, output io.Writer) (c
 	default:
 		return config{}, fmt.Errorf("--store: want memory or sqlite, got %q", cfg.store)
 	}
+	switch cfg.seed {
+	case "filled", "empty":
+	default:
+		return config{}, fmt.Errorf("--seed: want filled or empty, got %q", cfg.seed)
+	}
 	switch cfg.logFormat {
 	case "text", "json":
 	default:
@@ -147,9 +155,19 @@ func newLogger(format string, w io.Writer) *slog.Logger {
 	return slog.New(slog.NewTextHandler(w, nil))
 }
 
+// openStore seeds the store with the challenge tasks unless --seed=empty. SQLite inserts seeds only
+// into an empty table, so --seed never touches existing data.
 func openStore(ctx context.Context, cfg config) (store.Store, error) {
+	seeds := initialTasks(cfg.seed)
 	if cfg.store == "sqlite" {
-		return store.OpenSQLite(ctx, cfg.db, store.Seeds())
+		return store.OpenSQLite(ctx, cfg.db, seeds)
 	}
-	return store.NewMemory(store.Seeds()), nil
+	return store.NewMemory(seeds), nil
+}
+
+func initialTasks(seed string) []task.Task {
+	if seed == "empty" {
+		return nil
+	}
+	return store.Seeds()
 }

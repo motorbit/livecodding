@@ -5,10 +5,13 @@ DB      ?= ./tasks.db
 VOLUME  ?= taskapi-data
 ARGS    ?=
 
-.PHONY: run run-sqlite run-chaos test lint build docker-build docker-run
+.PHONY: run run-empty run-sqlite run-chaos test lint build docker-build docker-run
 
 run: ## In-memory store, seeded on start.
 	go run ./cmd/taskapi --addr=:$(PORT) $(ARGS)
+
+run-empty: ## In-memory store with no tasks (--seed=empty).
+	go run ./cmd/taskapi --addr=:$(PORT) --seed=empty $(ARGS)
 
 run-sqlite: ## SQLite store at $(DB); data survives restarts.
 	go run ./cmd/taskapi --addr=:$(PORT) --store=sqlite --db=$(DB) $(ARGS)

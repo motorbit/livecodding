@@ -31,6 +31,7 @@ in-memory `MockNetworkClient` (`Modules/Sources/TaskClient`), so the app can swi
 ```bash
 cd backend
 make run          # in-memory, seeded, :8080
+make run-empty    # in-memory, no tasks (--seed=empty)
 make run-sqlite   # SQLite at ./tasks.db (DB=…), survives restarts
 make run-chaos    # challenge latency + ~15% simulated 500s
 make test         # go test -race ./...
@@ -53,6 +54,7 @@ Every flag falls back to an environment variable. Flags win over env.
 | `--read-latency` | `READ_LATENCY` | off | `GET /tasks*` delay band, e.g. `300ms-800ms` or `500ms` |
 | `--write-latency` | `WRITE_LATENCY` | off | `POST`/`PUT`/`DELETE` delay band, e.g. `100ms-300ms` |
 | `--failure-rate` | `FAILURE_RATE` | `0` | Probability (0…1) of `500 {"error":"simulated failure"}` |
+| `--seed` | `SEED` | `filled` | Initial data: `filled` (the 4 challenge tasks) or `empty` |
 | `--log-format` | `LOG_FORMAT` | `text` | `text` or `json` (`slog`) |
 
 ## API
@@ -132,7 +134,10 @@ middleware's redaction rules. A test enforces this.
 ## Storage
 
 - **memory**: seeded on start and guarded by a `sync.RWMutex`. Lost on restart.
-- **sqlite**: creates the schema on start and seeds only when the `tasks` table is empty. Order is
+- **Initial data:** `--seed=filled` (default) starts with the challenge tasks, and `--seed=empty`
+  starts with none. With sqlite the flag applies only to an empty table, so it never changes or
+  removes existing data.
+- **sqlite**: creates the schema on start and seeds (if `--seed=filled`) only when the `tasks` table is empty. Order is
   kept by an `AUTOINCREMENT` `seq` column. It runs in WAL mode with one connection, which avoids
   `SQLITE_BUSY`. Data survives restarts. Note that deleting every task and restarting re-seeds.
 - In Docker, the database lives at `/data/tasks.db`. Mount a volume on `/data`:
