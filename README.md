@@ -45,8 +45,8 @@ TaskBoardFeature ─┬─ AddTaskFeature
 - ✅ Add task sheet (title required, notes, Low/Medium/High)
 - ✅ Detail / edit with Save, delete with confirmation, unsaved-changes discard prompt
 - ✅ Coordinator routing and localized strings
-- ⚠️ Data came from an async in-memory mock inside `TaskClient` (300–800 ms reads, ~15 % failures) —
-  no separate network layer / DTO boundary and no due dates yet
+- ✅ Mock network layer — async in-memory service (300–800 ms reads, ~15 % failures); the separate
+  DTO / network client split was a later refactor (PRs #15–16)
 
 ### After the session
 
