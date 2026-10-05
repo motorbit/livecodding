@@ -36,6 +36,15 @@ the toggle is disabled while in flight, the prior value stays on failure with an
 If a successful mutation races a fetch, the stale fetch result is discarded and the board fetches
 again so it cannot revert the confirmed mutation.
 
+## Offline changes
+
+`TaskClient` queues a change it can't send and reports success, so offline mutations look like
+successes here. Rows whose task has `isPendingSync` get a badge (`pendingSyncLabel`, "Not synced
+yet"). From the first appearance, the VM observes `taskClient.pendingSyncCounts()`
+(`pendingSyncTask`) and shows `pendingSyncMessage` ("N changes waiting to sync") while the count is
+above zero. It also observes `networkMonitorClient.isOnlineUpdates()` (`connectivityTask`) and
+reloads when the path goes from offline to online. Every load syncs first (inside `fetchTasks`).
+
 ## Search and sort
 
 Local only; never triggers a request. `rebuildRows()` stable-sorts `tasks` by `state.sortOrder`

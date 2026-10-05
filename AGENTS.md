@@ -12,7 +12,7 @@ Rules for AI agents and developers working in this repository. The **HARD RULES*
   - event-driven MVVM;
   - DI with swift-dependencies;
   - Swift Testing.
-- **Dependencies:** `swift-dependencies` (dependency injection); `GRDB` (SQLite, the task cache in `TaskClient`); NetworkClient provides typed HTTP transport, JSON decoding and endpoint construction; `TaskClient` talks to a DTO-level `TaskNetworkClient` that picks the backend per call from `AppEnvironment` (`local` = in-app `MockNetworkClient`, `dev`/`prod` = HTTP, e.g. the Go server in `backend/`).
+- **Dependencies:** `swift-dependencies` (dependency injection); `GRDB` (SQLite, the task cache and offline change queue in `TaskClient`); NetworkClient provides typed HTTP transport, JSON decoding and endpoint construction; `TaskClient` talks to a DTO-level `TaskNetworkClient` that picks the backend per call from `AppEnvironment` (`local` = in-app `MockNetworkClient`, `dev`/`prod` = HTTP, e.g. the Go server in `backend/`).
 
 ## Module map
 
@@ -27,8 +27,8 @@ Rules for AI agents and developers working in this repository. The **HARD RULES*
 | `DesignSystem` | UI (MainActor) | Color/typography/spacing tokens, basic components |
 | `Logging` | client | `LoggingClient` (`\.logger`), an os.Logger wrapper |
 | `L10n` | leaf | String Catalog + typed accessors |
-| `NetworkClient` | client | HTTP transport + logging middleware; used by `TaskClient`'s HTTP backend |
-| `TaskClient` | client | Task repository (`TaskClient`) over the internal `TaskNetworkClient` boundary (live = per-call backend from `AppEnvironment`: `MockNetworkClient` or HTTP) and the internal GRDB `TaskCacheClient` (on-disk cache, cleared on environment switch) |
+| `NetworkClient` | client | HTTP transport + logging middleware, used by `TaskClient`'s HTTP backend; `NetworkMonitorClient` (NWPathMonitor online/offline stream) |
+| `TaskClient` | client | Task repository (`TaskClient`) over the internal `TaskNetworkClient` boundary (live = per-call backend from `AppEnvironment`: `MockNetworkClient` or HTTP) and the internal GRDB `TaskCacheClient` (on-disk cache + offline change queue synced before each fetch, cleared on environment switch) |
 | `AppEnvironment` | client | `EnvironmentClient`: local/dev/prod configs from `BuildValues+Generated.swift` (CI: `scripts/generate-build-values.sh`), debug override |
 
 <!-- Delete rows for modules the project doesn't have. Add every new module here. -->
