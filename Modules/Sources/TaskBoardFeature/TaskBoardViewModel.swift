@@ -360,9 +360,16 @@ public final class TaskBoardViewModel: ObservableObject {
             if !tasks.contains(where: { $0.id == item.id }) {
                 tasks.append(item)
             }
+            let hasLoadedList: Bool
+            switch state.phase {
+            case .content, .empty: hasLoadedList = true
+            case .loading, .failed: hasLoadedList = false
+            }
             state.phase = .content
             rebuildRows()
             dismissAdd()
+            // The local list holds only the new task, so fetch the rest; a failure shows the reload banner.
+            if !hasLoadedList { load() }
         case .closeRequested:
             dismissAdd()
         }

@@ -45,8 +45,8 @@ TaskBoardFeature ─┬─ AddTaskFeature
 - ✅ Add task sheet (title required, notes, Low/Medium/High)
 - ✅ Detail / edit with Save, delete with confirmation, unsaved-changes discard prompt
 - ✅ Coordinator routing and localized strings
-- ⚠️ Data came from an async in-memory mock inside `TaskClient` (300–800 ms reads, ~15 % failures) —
-  no separate network layer / DTO boundary and no due dates yet
+- ✅ Mock network layer — async in-memory service (300–800 ms reads, ~15 % failures); the separate
+  DTO / network client split was a later refactor (PRs #15–16)
 
 ### After the session
 
@@ -76,21 +76,19 @@ TaskBoardFeature ─┬─ AddTaskFeature
 
 **Quality**
 
-- ✅ 94 Swift Testing tests; deterministic clock, latency and failure injection (no `Task.sleep`)
+- ✅ 97 Swift Testing tests; deterministic clock, latency and failure injection (no `Task.sleep`)
 - ✅ Async-race protection (stored tasks, generation counters, restart of stale loads)
 - ✅ Two code reviews against the brief; findings fixed in PR #22
 
 ## Known issues
 
-- **Adding a task after the initial load failed hides the error.** The `+` button stays enabled in the
-  failed state; on `.created` the board switches to `.content` with only the new task, without an
-  error or Retry, until the user pulls to refresh. Fix: start `load()` (or show the reload banner)
-  when a task is created while the board is `.failed`/`.loading`, or disable `+` until the first load
-  succeeds; add a test.
+None open. Fixed in PR #24: adding a task after the initial load failed used to show only the new
+task with no error or Retry; the board now reloads the list after such a create and shows the
+reload banner (with Retry) if that load fails too.
 
 ## TODO
 
-- [ ] Fix the known issue above.
+- [x] Fix the add-after-failed-load issue (PR #24).
 - [ ] Preserve UI state across scene / process recreation — `@SceneStorage` for search text, sort
       order and the open detail task ID, re-resolved after the list loads.
 - [ ] Theming — theme selection on top of the existing DesignSystem color tokens.
