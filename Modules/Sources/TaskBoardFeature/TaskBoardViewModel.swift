@@ -3,6 +3,7 @@ import Combine
 import Dependencies
 import Foundation
 import L10n
+import NetworkClient
 import TaskClient
 import TaskDetailFeature
 
@@ -12,6 +13,7 @@ public final class TaskBoardViewModel: ObservableObject {
     public private(set) var detailViewModel: TaskDetailViewModel?
 
     @Dependency(\.taskClient) private var taskClient
+    @Dependency(\.networkMonitorClient) private var networkMonitor
     @Dependency(\.continuousClock) private var clock
     @Dependency(\.date) private var date
     @Dependency(\.calendar) private var calendar
@@ -23,6 +25,10 @@ public final class TaskBoardViewModel: ObservableObject {
     /// One in-flight completion or delete request per row.
     var rowTasks: [UUID: Task<Void, Never>] = [:]
     var undoTask: Task<Void, Never>?
+    /// Observes the number of changes waiting to sync, from the first appearance on.
+    var pendingSyncTask: Task<Void, Never>?
+    /// Reloads (which syncs first) when the device gets a network path back.
+    var connectivityTask: Task<Void, Never>?
     private var loadGeneration = 0
     private var rowGeneration = 0
     private var undoGeneration = 0
@@ -30,6 +36,8 @@ public final class TaskBoardViewModel: ObservableObject {
     private var tasks: [TaskItem] = []
     /// `tasks` came from the on-disk cache and no fetch has succeeded since.
     private var isShowingCachedTasks = false
+    /// The last reported network path state; `nil` until the monitor reports.
+    private var isOnline: Bool?
     private var rowStatus: [UUID: RowStatus] = [:]
     /// Swiped row that can still be undone. Not sent to the API yet.
     private var pendingDeletion: PendingDeletion?
@@ -60,6 +68,8 @@ public final class TaskBoardViewModel: ObservableObject {
     deinit {
         loadTask?.cancel()
         undoTask?.cancel()
+        pendingSyncTask?.cancel()
+        connectivityTask?.cancel()
         rowTasks.values.forEach { $0.cancel() }
     }
 
@@ -80,6 +90,7 @@ public final class TaskBoardViewModel: ObservableObject {
         case .onAppear:
             guard loadGeneration == 0 else { return }
             load()
+            observeSyncState()
         case .retryTapped, .refreshRequested:
             load()
         case .addTapped:
@@ -154,6 +165,8 @@ public final class TaskBoardViewModel: ObservableObject {
         case undoWindowExpired
         case deletionSucceeded(UUID)
         case deletionFailed(UUID)
+        case pendingSyncCountChanged(Int)
+        case connectivityChanged(isOnline: Bool)
     }
 
     private func handle(_ action: InternalAction) {
@@ -205,6 +218,31 @@ public final class TaskBoardViewModel: ObservableObject {
                 restore(row)
             }
             rebuildRows()
+        case .pendingSyncCountChanged(let count):
+            state.pendingSyncMessage = count > 0 ? L10n.TaskBoard.pendingSyncCount(count, locale: locale) : nil
+        case .connectivityChanged(let isOnline):
+            let wasOffline = self.isOnline == false
+            self.isOnline = isOnline
+            if wasOffline, isOnline { load() }
+        }
+    }
+
+    private func observeSyncState() {
+        let counts = taskClient.pendingSyncCounts()
+        let paths = networkMonitor.isOnlineUpdates()
+        pendingSyncTask?.cancel()
+        pendingSyncTask = Task { [weak self] in
+            for await count in counts {
+                guard !Task.isCancelled, let self else { return }
+                self.handle(.pendingSyncCountChanged(count))
+            }
+        }
+        connectivityTask?.cancel()
+        connectivityTask = Task { [weak self] in
+            for await isOnline in paths {
+                guard !Task.isCancelled, let self else { return }
+                self.handle(.connectivityChanged(isOnline: isOnline))
+            }
         }
     }
 
@@ -491,7 +529,8 @@ public final class TaskBoardViewModel: ObservableObject {
                     : L10n.TaskBoard.markComplete,
                 errorMessage: errorMessage,
                 dueText: due?.text,
-                isOverdue: due?.isOverdue ?? false
+                isOverdue: due?.isOverdue ?? false,
+                pendingSyncLabel: item.isPendingSync ? L10n.TaskBoard.pendingSyncRow : nil
             )
         }
     }

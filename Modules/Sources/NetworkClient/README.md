@@ -9,6 +9,7 @@ The app's HTTP transport client. It provides a single `URLSession` transport, ty
 - `Endpoint<Response>` for method, path, query, headers and request-body construction.
 - `NetworkError` with sanitized, typed failure cases.
 - `NetworkMiddleware.logging(logger:)`: one sanitized log line per wire attempt.
+- `NetworkMonitorClient` (`\.networkMonitorClient`): `isOnlineUpdates()` streams whether the device has a usable network path (`NWPathMonitor`): the current value first, then every change. A path doesn't prove a server is reachable; use it as a hint to retry. `previewValue` reports online once; `testValue` is unimplemented.
 
 Only `LiveNetworkClient.urlSessionTransport(_:)` touches `URLSession`. `decode(_:for:)` and `sendChecked(_:)` are `@concurrent`: the whole exchange (middlewares, transport, status check, decoding) runs off the caller's actor, and the caller resumes on its own actor with the result. Raw `send(_:)` stays on the caller's actor; prefer the two checked entry points. Tests use closure-backed clients and stub `HTTPURLResponse` values; they never access the network.
 

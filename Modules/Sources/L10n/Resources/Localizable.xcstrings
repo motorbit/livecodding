@@ -269,6 +269,23 @@
         }
       }
     },
+    "taskBoard.pendingSync.count %lld" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : { "stringUnit" : { "state" : "translated", "value" : "%lld change waiting to sync" } },
+              "other" : { "stringUnit" : { "state" : "translated", "value" : "%lld changes waiting to sync" } }
+            }
+          }
+        }
+      }
+    },
+    "taskBoard.pendingSync.row" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Not synced yet" } }
+      }
+    },
     "taskBoard.error.reload" : {
       "localizations" : {
         "en" : { "stringUnit" : { "state" : "translated", "value" : "Couldn't refresh tasks. Showing the last loaded list." } }

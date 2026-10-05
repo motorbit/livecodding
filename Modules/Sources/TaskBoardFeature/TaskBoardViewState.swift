@@ -25,6 +25,9 @@ public struct TaskBoardRowState: Equatable, Identifiable {
     public var dueText: String?
     /// Incomplete and past due; the View uses the error color (the text also says "Overdue").
     public var isOverdue: Bool
+    /// Set while the task has a change not synced to the server yet; the View shows a badge with
+    /// this accessibility label.
+    public var pendingSyncLabel: String?
 
     public init(
         id: UUID,
@@ -37,7 +40,8 @@ public struct TaskBoardRowState: Equatable, Identifiable {
         completionAccessibilityLabel: String,
         errorMessage: String?,
         dueText: String? = nil,
-        isOverdue: Bool = false
+        isOverdue: Bool = false,
+        pendingSyncLabel: String? = nil
     ) {
         self.id = id
         self.title = title
@@ -50,6 +54,7 @@ public struct TaskBoardRowState: Equatable, Identifiable {
         self.errorMessage = errorMessage
         self.dueText = dueText
         self.isOverdue = isOverdue
+        self.pendingSyncLabel = pendingSyncLabel
     }
 }
 
@@ -87,6 +92,8 @@ public struct TaskBoardViewState: Equatable {
     public var phase: TaskBoardPhase
     public var rows: [TaskBoardRowState]
     public var reloadErrorMessage: String?
+    /// "N changes waiting to sync"; `nil` when everything is synced.
+    public var pendingSyncMessage: String?
     public var navigationPath: [TaskBoardRoute]
     public var isDetailDirty: Bool
     public var isDiscardConfirmationPresented: Bool
@@ -121,6 +128,7 @@ public struct TaskBoardViewState: Equatable {
         phase: TaskBoardPhase = .loading,
         rows: [TaskBoardRowState] = [],
         reloadErrorMessage: String? = nil,
+        pendingSyncMessage: String? = nil,
         navigationPath: [TaskBoardRoute] = [],
         isDetailDirty: Bool = false,
         isDiscardConfirmationPresented: Bool = false,
@@ -156,6 +164,7 @@ public struct TaskBoardViewState: Equatable {
         self.phase = phase
         self.rows = rows
         self.reloadErrorMessage = reloadErrorMessage
+        self.pendingSyncMessage = pendingSyncMessage
         self.navigationPath = navigationPath
         self.isDetailDirty = isDetailDirty
         self.isDiscardConfirmationPresented = isDiscardConfirmationPresented

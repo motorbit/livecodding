@@ -83,7 +83,7 @@ TaskBoardFeature ─┬─ AddTaskFeature
 
 **Quality**
 
-- ✅ 136 Swift Testing tests; deterministic clock, latency and failure injection (no `Task.sleep`)
+- ✅ 153 Swift Testing tests; deterministic clock, latency and failure injection (no `Task.sleep`)
 - ✅ Async-race protection (stored tasks, generation counters, restart of stale loads)
 - ✅ Two code reviews against the brief; findings fixed in PR #22
 
@@ -110,6 +110,10 @@ Ideas that follow from the brief's "treat it like the start of a real product":
 - ✅ **Persistence / caching** — implemented: an on-disk SQLite cache (GRDB) behind `TaskClient`,
   cleared on every environment switch. The board shows cached tasks first, refreshes from the network, and keeps
   the cached list with a "Showing saved tasks" banner when the server can't be reached.
+- ✅ **Offline changes and sync**: when the server can't be reached, create/edit/complete/delete still
+  work. Changes are queued in SQLite and sent before the next load (Retry, pull-to-refresh, or automatically
+  when the network comes back). Unsynced rows show a badge, and a banner says "N changes waiting to sync".
+  Last write wins; a change the server refuses is dropped.
 - **Live updates** — expose changes as an `AsyncStream` (the brief's alternative API shape) so
   several screens stay in sync without manual list patching.
 - **Optimistic completion** — toggle immediately with rollback on failure, like swipe-delete.

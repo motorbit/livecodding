@@ -16,6 +16,8 @@ public struct TaskItem: Identifiable, Codable, Equatable, Sendable {
     public var isComplete: Bool
     /// A calendar day, stored as 00:00 UTC of that day. Transferred as `yyyy-MM-dd`.
     public var dueDate: Date?
+    /// Changed on this device while the server couldn't be reached; sent by the next sync.
+    public var isPendingSync: Bool
 
     public init(
         id: UUID,
@@ -23,7 +25,8 @@ public struct TaskItem: Identifiable, Codable, Equatable, Sendable {
         notes: String = "",
         priority: TaskPriority,
         isComplete: Bool = false,
-        dueDate: Date? = nil
+        dueDate: Date? = nil,
+        isPendingSync: Bool = false
     ) {
         self.id = id
         self.title = title
@@ -31,6 +34,7 @@ public struct TaskItem: Identifiable, Codable, Equatable, Sendable {
         self.priority = priority
         self.isComplete = isComplete
         self.dueDate = dueDate
+        self.isPendingSync = isPendingSync
     }
 }
 
@@ -63,19 +67,29 @@ public enum TaskClientError: Error, Equatable, Sendable {
     case unavailable
 }
 
+/// Offline-first: when the server can't be reached (`.unavailable`), `createTask`, `updateTask`
+/// and `deleteTask` succeed locally. The change is queued, returned items have `isPendingSync`, and
+/// the next `fetchTasks` sends the queue before fetching. Validation and not-found errors are still
+/// thrown. Returned items keep the id the caller used until the next fetch, even after a task
+/// created offline has received its server id.
 @DependencyClient
 public struct TaskClient: Sendable {
-    /// Fetches from the network and refreshes the on-disk cache.
+    /// Sends queued changes, then fetches from the network and refreshes the on-disk cache. Changes
+    /// the server can't take now stay queued without failing the fetch. Queued changes are applied
+    /// on top of the result.
     public var fetchTasks: @Sendable () async throws -> [TaskItem]
-    /// The last fetched list for the active environment, kept up to date by every successful
-    /// mutation. Empty when nothing is cached or the environment changed since. Shown before
-    /// `fetchTasks` returns.
+    /// The last fetched list for the active environment with queued changes applied. Empty when
+    /// nothing is cached or the environment changed since. Shown before `fetchTasks` returns.
     public var cachedTasks: @Sendable () async throws -> [TaskItem]
-    /// Empties the on-disk cache. Called when the environment changes.
+    /// Empties the on-disk cache, including changes not synced yet. Called when the environment
+    /// changes.
     public var clearCache: @Sendable () async throws -> Void
     public var createTask: @Sendable (_ draft: TaskDraft) async throws -> TaskItem
     public var updateTask: @Sendable (_ task: TaskItem) async throws -> TaskItem
     public var deleteTask: @Sendable (_ id: UUID) async throws -> Void
+    /// The number of changes waiting to sync in the active environment: the current value, then
+    /// every change.
+    public var pendingSyncCounts: @Sendable () -> AsyncStream<Int> = { AsyncStream { $0.finish() } }
 }
 
 extension TaskClient: DependencyKey {

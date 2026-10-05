@@ -23,6 +23,12 @@ public extension L10n {
         public static var reloadError: String {
             String(localized: "taskBoard.error.reload", defaultValue: "Couldn't refresh tasks. Showing the last loaded list.", bundle: .module)
         }
+        public static var pendingSyncRow: String {
+            String(localized: "taskBoard.pendingSync.row", defaultValue: "Not synced yet", bundle: .module)
+        }
+        public static func pendingSyncCount(_ count: Int, locale: Locale) -> String {
+            String(localized: "taskBoard.pendingSync.count \(count)", bundle: .module, locale: locale)
+        }
         public static var offlineError: String {
             String(localized: "taskBoard.error.offline", defaultValue: "Can't reach the server. Showing saved tasks.", bundle: .module)
         }
