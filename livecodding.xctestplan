@@ -74,6 +74,20 @@
         "identifier" : "TaskDetailFeatureTests",
         "name" : "TaskDetailFeatureTests"
       }
+    },
+    {
+      "target" : {
+        "containerPath" : "container:Modules",
+        "identifier" : "AppEnvironmentTests",
+        "name" : "AppEnvironmentTests"
+      }
+    },
+    {
+      "target" : {
+        "containerPath" : "container:Modules",
+        "identifier" : "DebugMenuFeatureTests",
+        "name" : "DebugMenuFeatureTests"
+      }
     }
   ],
   "version" : 1

@@ -46,6 +46,7 @@ struct TaskClientTests {
             (TaskNetworkError.badRequest, TaskClientError.validation),
             (.notFound, .notFound),
             (.serverError, .unavailable),
+            (.transport, .unavailable),
         ])
     func mapsNetworkErrors(networkError: TaskNetworkError, expected: TaskClientError) async {
         await withDependencies {

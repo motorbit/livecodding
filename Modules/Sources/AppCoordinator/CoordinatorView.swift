@@ -1,4 +1,5 @@
 import BootstrapFeature
+import DebugMenuFeature
 import TaskBoardFeature
 import SwiftUI
 
@@ -22,6 +23,20 @@ public struct CoordinatorView: View {
                 }
             }
             // Overlays go here, each driven by optional state on the coordinator.
+            if let debugMenuButton = coordinator.debugMenuButton {
+                DebugMenuButton(state: debugMenuButton) { coordinator.openDebugMenu() }
+                    .padding(.leading, .md)
+                    .padding(.bottom, .xxl)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+            }
+        }
+        .sheet(isPresented: Binding(
+            get: { coordinator.debugMenu != nil },
+            set: { if !$0 { coordinator.debugMenuDismissed() } }
+        )) {
+            if let debugMenu = coordinator.debugMenu {
+                DebugMenuView(viewModel: debugMenu)
+            }
         }
     }
 }

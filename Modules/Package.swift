@@ -17,11 +17,13 @@ enum Module: String, CaseIterable {
     case addTaskFeature = "AddTaskFeature"
     case taskDetailFeature = "TaskDetailFeature"
     case bootstrapFeature = "BootstrapFeature"
+    case debugMenuFeature = "DebugMenuFeature"
 
     // Clients / infrastructure (nonisolated by default)
     case taskClient = "TaskClient"
     case logging = "Logging"
     case networkClient = "NetworkClient"
+    case appEnvironment = "AppEnvironment"
 
     // Leaves
     case designSystem = "DesignSystem"   // always present (AGENTS.md R15); a UI module
@@ -31,7 +33,6 @@ enum Module: String, CaseIterable {
     // case networkClient = "NetworkClient"      // ios-network-client
     // case storage = "Storage"                  // ios-storage
     // case analytics = "Analytics"              // ios-analytics
-    // case appEnvironment = "AppEnvironment"    // ios-app-environment
 
     var name: String { rawValue }
     var testsName: String { rawValue + "Tests" }
@@ -70,11 +71,15 @@ let package = Package(
         uiModule(.appCoordinator, dependencies: [
             .module(.bootstrapFeature),
             .module(.taskBoardFeature),
+            .module(.debugMenuFeature),
+            .module(.appEnvironment),
             .module(.logging),
             .dependencies,
         ], testDependencies: [
             .module(.bootstrapFeature),
             .module(.taskBoardFeature),
+            .module(.debugMenuFeature),
+            .module(.appEnvironment),
             .module(.logging),
         ]),
 
@@ -85,6 +90,16 @@ let package = Package(
             .module(.logging),
             .dependencies,
         ], testDependencies: [.module(.logging)]),
+        uiModule(.debugMenuFeature, dependencies: [
+            .module(.appEnvironment),
+            .module(.designSystem),
+            .module(.l10n),
+            .module(.logging),
+            .dependencies,
+        ], testDependencies: [
+            .module(.appEnvironment),
+            .module(.logging),
+        ]),
         uiModule(.taskBoardFeature, dependencies: [
             .module(.taskClient),
             .module(.addTaskFeature),
@@ -123,9 +138,16 @@ let package = Package(
         // Clients
         clientModule(.logging, dependencies: [.dependencies, .dependenciesMacros]),
         clientModule(.taskClient, dependencies: [
+            .module(.appEnvironment),
+            .module(.networkClient),
+            .module(.logging),
             .dependencies,
             .dependenciesMacros,
-        ], resources: [.process("Resources")]),
+        ], resources: [.process("Resources")], testDependencies: [
+            .module(.appEnvironment),
+            .module(.networkClient),
+            .module(.logging),
+        ]),
         clientModule(.networkClient, dependencies: [
             .dependencies,
             .dependenciesMacros,
@@ -133,6 +155,7 @@ let package = Package(
         ], testDependencies: [
             .module(.logging),
         ]),
+        clientModule(.appEnvironment, dependencies: [.dependencies, .dependenciesMacros]),
 
         // Leaves
         // DesignSystem: no tests by default (tokens only). Drop `resources:` if it has no

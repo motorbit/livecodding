@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Debug-only Info.plist keys. Xcode merges this with the generated Info.plist
+     (GENERATE_INFOPLIST_FILE = YES). Wired ONLY for the Debug configuration:
+     target ▸ Build Settings ▸ Info.plist File ▸ Debug = Config/Debug-Info.plist (Release stays empty).
+     Keep it out of every target's Copy Bundle Resources phase. -->
+<plist version="1.0">
+<dict>
+	<!-- Plain-HTTP access to local hosts (localhost, *.local, unqualified names) for the dev
+	     environment, e.g. the Go backend in backend/. Never shipped in Release. -->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+</dict>
+</plist>

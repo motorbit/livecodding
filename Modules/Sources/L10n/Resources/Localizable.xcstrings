@@ -123,6 +123,46 @@
         "en" : { "stringUnit" : { "state" : "translated", "value" : "Try again" } }
       }
     },
+    "debugMenu.backend.mock" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "In-app mock" } }
+      }
+    },
+    "debugMenu.backend.notConfigured" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Not configured" } }
+      }
+    },
+    "debugMenu.environment.dev" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Dev" } }
+      }
+    },
+    "debugMenu.environment.footer" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Switching restarts the app from the start screen." } }
+      }
+    },
+    "debugMenu.environment.header" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Environment" } }
+      }
+    },
+    "debugMenu.environment.local" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Local" } }
+      }
+    },
+    "debugMenu.environment.prod" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Prod" } }
+      }
+    },
+    "debugMenu.title" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Debug Menu" } }
+      }
+    },
     "taskBoard.add" : {
       "localizations" : {
         "en" : { "stringUnit" : { "state" : "translated", "value" : "Add Task" } }

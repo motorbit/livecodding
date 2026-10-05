@@ -1,5 +1,7 @@
+import AppEnvironment
 import BootstrapFeature
 import Combine
+import DebugMenuFeature
 import Dependencies
 import Logging
 import TaskBoardFeature
@@ -9,10 +11,18 @@ import TaskBoardFeature
 public final class AppCoordinator: ObservableObject {
     /// `nil` only while `init` runs; always set once `init` returns.
     @Published public private(set) var screen: AppScreen?
+    /// The debug menu overlay (a sheet over any screen). Not a route.
+    @Published public private(set) var debugMenu: DebugMenuViewModel?
+    /// The floating button that opens it; `nil` when the build can't switch environments
+    /// (prod release).
+    public var debugMenuButton: DebugMenuButtonState? {
+        environmentClient.selectableEnvironments().isEmpty ? nil : DebugMenuButtonState()
+    }
 
     // The coordinator's own dependencies. `withDependencies(from: self)` propagates the context
     // through these, so keep at least one `@Dependency` here.
     @Dependency(\.logger) private var logger
+    @Dependency(\.environmentClient) private var environmentClient
 
     public init(initialRoute: AppRoute = .bootstrap) {
         navigate(to: initialRoute)
@@ -56,12 +66,53 @@ public final class AppCoordinator: ObservableObject {
         }
     }
 
+    // MARK: - Debug menu overlay
+
+    /// Opens the debug menu (floating button). Does nothing when the build doesn't allow switching
+    /// environments (prod release) or the menu is already open.
+    public func openDebugMenu() {
+        guard debugMenu == nil, debugMenuButton != nil else { return }
+        let viewModel = withDependencies(from: self) { DebugMenuViewModel() }
+        viewModel.onEvent = { [weak self] event in self?.handle(event) }
+        debugMenu = viewModel
+    }
+
+    /// The sheet was dismissed interactively. Guarded: SwiftUI also calls this after a programmatic
+    /// dismissal, while it updates the view.
+    public func debugMenuDismissed() {
+        guard debugMenu != nil else { return }
+        debugMenu = nil
+    }
+
+    /// Ordered reset on an environment switch:
+    /// 1. persist the override;
+    /// 2. drop the overlay and the current screen, which cancels in-flight work (VMs cancel their
+    ///    tasks in `deinit`);
+    /// 3. clear environment-bound state (none yet: add tokens, caches, analytics reset here);
+    /// 4. start over from the initial route.
+    func switchEnvironment(to environment: AppEnvironment) {
+        logger.notice("Switching environment", ["environment": environment.rawValue])
+        environmentClient.setOverride(environment)
+        debugMenu = nil
+        screen = nil
+        navigate(to: .bootstrap)
+    }
+
     // MARK: - Child output
 
     private func handle(_ event: BootstrapViewModelEvent) {
         switch event {
         case .finished:
             navigate(to: .taskBoard)
+        }
+    }
+
+    private func handle(_ event: DebugMenuViewModelEvent) {
+        switch event {
+        case .environmentChangeRequested(let environment):
+            switchEnvironment(to: environment)
+        case .closeRequested:
+            debugMenu = nil
         }
     }
 }
