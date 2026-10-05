@@ -105,6 +105,7 @@ let package = Package(
         ]),
         uiModule(.taskBoardFeature, dependencies: [
             .module(.taskClient),
+            .module(.networkClient),
             .module(.addTaskFeature),
             .module(.taskDetailFeature),
             .module(.designSystem),
@@ -113,6 +114,7 @@ let package = Package(
             .dependencies,
         ], testDependencies: [
             .module(.taskClient),
+            .module(.networkClient),
             .module(.addTaskFeature),
             .module(.taskDetailFeature),
             .module(.logging),

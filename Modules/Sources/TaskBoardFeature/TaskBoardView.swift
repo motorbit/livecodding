@@ -22,6 +22,9 @@ public struct TaskBoardView: View {
                 if let banner = viewModel.state.reloadErrorMessage {
                     reloadBanner(banner)
                 }
+                if let pending = viewModel.state.pendingSyncMessage {
+                    pendingSyncBanner(pending)
+                }
                 content
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -244,6 +247,15 @@ public struct TaskBoardView: View {
         .accessibilityElement(children: .contain)
     }
 
+    private func pendingSyncBanner(_ message: String) -> some View {
+        Label(message, systemImage: "arrow.triangle.2.circlepath")
+            .font(.dsCaption)
+            .foregroundStyle(Color.dsTextSecondary)
+            .frame(maxWidth: .infinity, minHeight: HitTarget.minimum, alignment: .leading)
+            .padding(.horizontal, .md)
+            .background(Color.dsSurface)
+    }
+
     private func reloadBanner(_ message: String) -> some View {
         HStack(spacing: .sm) {
             Text(message)
@@ -303,6 +315,12 @@ private struct TaskBoardRowView: View {
                             }
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
+                        if let pendingSyncLabel = row.pendingSyncLabel {
+                            Image(systemName: "arrow.triangle.2.circlepath")
+                                .font(.dsCaption)
+                                .foregroundStyle(Color.dsTextSecondary)
+                                .accessibilityLabel(pendingSyncLabel)
+                        }
                         PriorityBadge(
                             text: row.priorityText,
                             priority: row.priority,

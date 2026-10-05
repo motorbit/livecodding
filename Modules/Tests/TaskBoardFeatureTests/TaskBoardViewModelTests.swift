@@ -3,6 +3,7 @@ import Combine
 import Dependencies
 import Foundation
 import L10n
+import NetworkClient
 import TaskClient
 import TaskDetailFeature
 import Testing
@@ -14,6 +15,8 @@ private func makeDependencies(_ dependencies: inout DependencyValues) {
     dependencies.taskClient.fetchTasks = { TaskItem.samples }
     dependencies.taskClient.cachedTasks = { [] }
     dependencies.taskClient.updateTask = { $0 }
+    dependencies.taskClient.pendingSyncCounts = { AsyncStream { $0.finish() } }
+    dependencies.networkMonitorClient.isOnlineUpdates = { AsyncStream { $0.finish() } }
 }
 
 private let firstID = TaskItem.samples[0].id
@@ -1437,5 +1440,92 @@ struct TaskBoardReviewFixTests {
         sut.trigger(.dayMayHaveChanged)
 
         #expect(sut.state.rows[0].dueText == "Due today")
+    }
+}
+
+@MainActor
+struct TaskBoardSyncTests {
+    @Test("""
+        Given a fetched task with a change not synced yet,
+        When the board loads,
+        Then only that row has the pending-sync badge
+        """)
+    func pendingTaskShowsBadge() async {
+        var pending = TaskItem.samples
+        pending[1].isPendingSync = true
+        let tasks = pending
+        let sut = withDependencies {
+            makeDependencies(&$0)
+            $0.taskClient.fetchTasks = { tasks }
+        } operation: { TaskBoardViewModel() }
+
+        sut.trigger(.onAppear)
+        await sut.loadTask?.value
+
+        #expect(sut.state.rows.map(\.pendingSyncLabel) == [nil, L10n.TaskBoard.pendingSyncRow, nil, nil])
+    }
+
+    @Test("""
+        Given changes waiting to sync,
+        When the count is reported and later drops to zero,
+        Then the banner shows the count and then hides
+        """)
+    func pendingCountDrivesBanner() async {
+        let locale = Locale(identifier: "en_US")
+        let (counts, continuation) = AsyncStream<Int>.makeStream()
+        let sut = withDependencies {
+            makeDependencies(&$0)
+            $0.locale = locale
+            $0.taskClient.pendingSyncCounts = { counts }
+        } operation: { TaskBoardViewModel() }
+
+        sut.trigger(.onAppear)
+        continuation.yield(2)
+        continuation.finish()
+        await sut.pendingSyncTask?.value
+        #expect(sut.state.pendingSyncMessage == L10n.TaskBoard.pendingSyncCount(2, locale: locale))
+        #expect(sut.state.pendingSyncMessage == "2 changes waiting to sync")
+
+        let (zero, zeroContinuation) = AsyncStream<Int>.makeStream()
+        let cleared = withDependencies {
+            makeDependencies(&$0)
+            $0.taskClient.pendingSyncCounts = { zero }
+        } operation: { TaskBoardViewModel(state: TaskBoardViewState(pendingSyncMessage: "stale")) }
+        cleared.trigger(.onAppear)
+        zeroContinuation.yield(0)
+        zeroContinuation.finish()
+        await cleared.pendingSyncTask?.value
+        #expect(cleared.state.pendingSyncMessage == nil)
+    }
+
+    @Test("""
+        Given a loaded board,
+        When the network path goes from online to offline and back,
+        Then it reloads once, on getting the connection back
+        """)
+    func reconnectReloads() async {
+        let fetches = LockIsolated(0)
+        let (paths, continuation) = AsyncStream<Bool>.makeStream()
+        let sut = withDependencies {
+            makeDependencies(&$0)
+            $0.taskClient.fetchTasks = {
+                fetches.withValue { $0 += 1 }
+                return TaskItem.samples
+            }
+            $0.networkMonitorClient.isOnlineUpdates = { paths }
+        } operation: { TaskBoardViewModel() }
+
+        sut.trigger(.onAppear)
+        await sut.loadTask?.value
+        continuation.yield(true)
+        continuation.yield(true)
+        continuation.yield(false)
+        continuation.yield(true)
+        continuation.finish()
+        await sut.connectivityTask?.value
+        await sut.loadTask?.value
+
+        #expect(fetches.value == 2)
+        #expect(sut.state.phase == .content)
     }
 }
