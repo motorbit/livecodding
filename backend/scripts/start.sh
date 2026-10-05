@@ -110,5 +110,14 @@ fi
 
 log ""
 log "✓ Task API running: http://localhost:$PORT  (store=$STORE seed=$SEED chaos=$CHAOS log=$LOG_FORMAT)"
-log "  logs: docker logs -f $CONTAINER    stop: docker rm -f $CONTAINER"
+log ""
+log "  Logs:"
+log "    docker logs -f $CONTAINER              # follow live (Ctrl+C stops following, server keeps running)"
+log "    docker logs --tail 50 $CONTAINER       # last 50 lines"
+log "    docker logs --since 5m $CONTAINER      # last 5 minutes"
+if [[ "$LOG_FORMAT" == "json" ]]; then
+  log "    docker logs $CONTAINER 2>&1 | jq       # pretty-print JSON logs"
+fi
+log "  Stop:"
+log "    docker rm -f $CONTAINER                # also deletes its logs"
 echo "$PORT"
