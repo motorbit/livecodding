@@ -36,13 +36,13 @@ This skill creates `Modules/Sources/NetworkClient/`. It starts as a clean minima
 5. **Package.swift.** Merge `templates/Package.snippet.swift` and resolve its option markers the same way. Then add `NetworkClientTests` to the test plan with `python3 .github/skills/ios-project-bootstrap/scripts/sync_test_plan.py <Root>/<App>.xctestplan`. If the plan doesn't exist yet, the script says so. Create it with ios-project-bootstrap's `wire_xcode_project.py` (step 9).
 6. **auth only.** `AuthTokenProvider` is only an interface (`TestDependencyKey`). Tell the user that the module owning sign-in must add `extension AuthTokenProvider: DependencyKey { static let liveValue = … }`. Auth/SSO SDK integration is out of scope for this kit.
 7. **API clients.** Features don't call `NetworkClient`. For each backend area, create an API client with **ios-dependency-client**, e.g. `ProfileClient.fetchProfile`, whose live value uses `@Dependency(\.networkClient)` and an `Endpoint` or `URLRequest`. It gets the base URL from `AppEnvironment` if that module exists, or from a constant otherwise.
-8. **README** for the module: list the enabled options, the middleware order and the redaction rules.
+8. **README** for the module: list the enabled options, the concurrency model (`@concurrent` checked entry points), the middleware order and the redaction rules.
 
 ## Rules / Checklist
 
 - The transport (`URLSession`) is touched in exactly one function (`urlSessionTransport`).
-- Under `NonisolatedNonsendingByDefault`, client code runs on the caller's actor. Awaiting `URLSession` is fine, but **decoding and other CPU work must be `@concurrent`** (see `decodeOffMain`).
-- Logging never records headers, bodies or query values. It never uses `print`.
+- Under `NonisolatedNonsendingByDefault`, client code runs on the caller's actor. The checked entry points `decode(_:for:)` and `sendChecked(_:)` are therefore **`@concurrent`**: the whole exchange (middlewares, transport, status check, decoding) runs off the caller's actor, and the caller resumes on its own actor with the result. Raw `send(_:)` stays on the caller's actor; API clients use the checked entry points.
+- Logging never records headers, bodies or query values. It never uses `print`. Failures are logged as the mapped `NetworkError`, never the raw error (`URLError.userInfo` holds the full failing URL). Cancellation is logged at `.debug`, not as an error.
 - Retries apply only to idempotent methods and transient failures. The retry `clock` is injected (`\.continuousClock` in live, `ImmediateClock()` in tests). Cancellation stops retrying.
 - Auth refreshes **once** per rejected token (single-flight actor) and retries once. A second 401 is returned to the caller.
 - The correlation ID is set once per logical request, outside retry, so every attempt shares it.

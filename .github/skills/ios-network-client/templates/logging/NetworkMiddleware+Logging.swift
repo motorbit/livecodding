@@ -18,7 +18,13 @@ public extension NetworkMiddleware {
                 } catch {
                     var metadata = request.sanitizedMetadata
                     metadata["durationMs"] = (ContinuousClock.now - start).milliseconds
-                    logger.error(error, metadata)
+                    // Raw errors (e.g. URLError's failing URL in userInfo) may carry query values.
+                    let networkError = NetworkError(error)
+                    if networkError == .cancelled {
+                        logger.debug("HTTP request cancelled", metadata)
+                    } else {
+                        logger.error(networkError, metadata)
+                    }
                     throw error
                 }
             }

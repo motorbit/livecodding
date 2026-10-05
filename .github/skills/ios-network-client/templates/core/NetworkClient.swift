@@ -9,7 +9,7 @@ public typealias HTTPSend = @Sendable (URLRequest) async throws -> (Data, HTTPUR
 /// on top of it. Features don't call it directly.
 ///
 /// The minimal version returns raw data for any status code; callers decide what's a success.
-/// The `json` option adds status checks, typed `NetworkError` and off-main decoding.
+/// The `json` option adds status checks, typed `NetworkError` and `@concurrent` (off-main) exchanges.
 @DependencyClient
 public struct NetworkClient: Sendable {
     public var send: @Sendable (_ request: URLRequest) async throws -> (Data, HTTPURLResponse)
