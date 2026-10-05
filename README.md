@@ -97,9 +97,10 @@ reload banner (with Retry) if that load fails too.
 
 Ideas that follow from the brief's "treat it like the start of a real product":
 
-- **Backend in Go** — a small REST service (`GET/POST /tasks`, `PUT/DELETE /tasks/{id}`) with the
-  same `TaskDTO` JSON contract. On iOS, implement `TaskNetworkClient.liveValue` on top of the
-  existing `NetworkClient` module; the repository and features stay unchanged.
+- ✅ **[Backend in Go](backend/README.md)** — implemented: a small REST service (`GET/POST /tasks`,
+  `PUT/DELETE /tasks/{id}`) with the same `TaskDTO` JSON contract. iOS integration is still TODO:
+  implement `TaskNetworkClient.liveValue` on top of the existing `NetworkClient` module; the
+  repository and features stay unchanged.
 - **Persistence / caching** — on-disk cache (SwiftData) behind `TaskClient` for offline start and
   instant first paint, refreshed from the network.
 - **Live updates** — expose changes as an `AsyncStream` (the brief's alternative API shape) so

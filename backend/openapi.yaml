@@ -1,0 +1,206 @@
+openapi: 3.1.0
+info:
+  title: Task Board API
+  version: 1.0.0
+  summary: Backend for the Task Board iOS app.
+  description: |
+    Same contract as the iOS in-memory `MockNetworkClient`
+    (`Modules/Sources/TaskClient`). JSON keys and values match `TaskDTO`,
+    `TaskDraftDTO` and `PriorityDTO`.
+
+    Every response is `application/json`. Errors use `{"error": "<message>"}`;
+    messages never echo request input. Every response carries `X-Request-ID`.
+
+    With chaos flags enabled, `/tasks` routes may be delayed and may return
+    `500 {"error":"simulated failure"}`. `/healthz` is never affected.
+  license:
+    name: MIT
+    identifier: MIT
+servers:
+  - url: http://localhost:8080
+    description: Local development server.
+# No authentication yet: a local development backend.
+security: []
+paths:
+  /healthz:
+    get:
+      operationId: health
+      summary: Liveness check (excluded from chaos).
+      responses:
+        "200":
+          description: Server is up.
+          headers:
+            X-Request-ID: { $ref: "#/components/headers/RequestID" }
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status: { type: string, const: ok }
+              example: { status: ok }
+  /tasks:
+    get:
+      operationId: listTasks
+      summary: List all tasks in insertion order.
+      parameters:
+        - $ref: "#/components/parameters/RequestID"
+      responses:
+        "200":
+          description: All tasks, in insertion order (the app keeps API order).
+          headers:
+            X-Request-ID: { $ref: "#/components/headers/RequestID" }
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Task" }
+              example:
+                - { id: 00000000-0000-0000-0000-000000000001, title: Renew domain registration, notes: Expires end of month, priority: High, done: false }
+                - { id: 00000000-0000-0000-0000-000000000002, title: Reply to design feedback, notes: "", priority: Medium, done: false }
+                - { id: 00000000-0000-0000-0000-000000000003, title: Book dentist, notes: "", priority: Low, done: true }
+                - { id: 00000000-0000-0000-0000-000000000004, title: Migrate the analytics pipeline to the new warehouse and validate dashboards, notes: Long one — check layout, priority: Medium, done: false }
+        "500": { $ref: "#/components/responses/ServerError" }
+    post:
+      operationId: createTask
+      summary: Create a task. The server assigns `id` and sets `done` to false.
+      parameters:
+        - $ref: "#/components/parameters/RequestID"
+      requestBody:
+        required: true
+        description: At most 1 MiB. `title` is trimmed of whitespace and newlines and must not be empty.
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TaskDraft" }
+            example: { title: "  Pay rent ", notes: "", priority: High, due_date: "2026-10-31" }
+      responses:
+        "201":
+          description: Created. The body is the stored task (trimmed title).
+          headers:
+            Location:
+              description: Path of the new task.
+              schema: { type: string, example: /tasks/6F1E2D3C-4B5A-4978-8A6B-5C4D3E2F1A0B }
+            X-Request-ID: { $ref: "#/components/headers/RequestID" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Task" }
+              example: { id: 6F1E2D3C-4B5A-4978-8A6B-5C4D3E2F1A0B, title: Pay rent, notes: "", priority: High, done: false, due_date: "2026-10-31" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "500": { $ref: "#/components/responses/ServerError" }
+  /tasks/{id}:
+    parameters:
+      - $ref: "#/components/parameters/TaskID"
+      - $ref: "#/components/parameters/RequestID"
+    put:
+      operationId: updateTask
+      summary: Replace a task. Body `id` must equal the path `id`.
+      requestBody:
+        required: true
+        description: |
+          A full task, at most 1 MiB. `title` is trimmed and must not be empty.
+          Omit `due_date` or send `null` to clear it.
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Task" }
+            example: { id: 00000000-0000-0000-0000-000000000003, title: Book dentist, notes: "", priority: Low, done: false, due_date: "2026-11-02" }
+      responses:
+        "200":
+          description: The stored task.
+          headers:
+            X-Request-ID: { $ref: "#/components/headers/RequestID" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Task" }
+              example: { id: 00000000-0000-0000-0000-000000000003, title: Book dentist, notes: "", priority: Low, done: false, due_date: "2026-11-02" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/ServerError" }
+    delete:
+      operationId: deleteTask
+      summary: Delete a task.
+      responses:
+        "204":
+          description: Deleted. Empty body.
+          headers:
+            X-Request-ID: { $ref: "#/components/headers/RequestID" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/ServerError" }
+components:
+  parameters:
+    TaskID:
+      name: id
+      in: path
+      required: true
+      description: Task UUID, any letter case. A value that is not a UUID returns 404.
+      schema: { type: string, format: uuid }
+      example: 00000000-0000-0000-0000-000000000001
+    RequestID:
+      name: X-Request-ID
+      in: header
+      required: false
+      description: |
+        Correlation id, echoed back. `X-Correlation-ID` is accepted too.
+        Values over 128 chars or outside `[A-Za-z0-9._-]` are replaced by a generated id.
+      schema: { type: string, maxLength: 128, pattern: "^[A-Za-z0-9._-]+$" }
+  headers:
+    RequestID:
+      description: The request's correlation id (incoming or generated).
+      schema: { type: string }
+  schemas:
+    Priority:
+      type: string
+      enum: [Low, Medium, High]
+    DueDate:
+      description: UTC calendar day, no time component. Absent or null means no due date.
+      type: [string, "null"]
+      format: date
+      pattern: "^\\d{4}-\\d{2}-\\d{2}$"
+      example: "2026-10-31"
+    Task:
+      description: Mirrors iOS `TaskDTO`.
+      type: object
+      required: [id, title, notes, priority, done]
+      properties:
+        id: { type: string, format: uuid, description: "Server-assigned. Emitted upper-case; accepted in any case." }
+        title: { type: string, minLength: 1, description: Trimmed; never empty. }
+        notes: { type: string, description: May be empty. }
+        priority: { $ref: "#/components/schemas/Priority" }
+        done: { type: boolean }
+        due_date: { $ref: "#/components/schemas/DueDate" }
+    TaskDraft:
+      description: Mirrors iOS `TaskDraftDTO`. Unknown keys (e.g. `id`, `done`) are ignored.
+      type: object
+      required: [title, notes, priority]
+      properties:
+        title: { type: string, description: Trimmed; must not be empty after trimming. }
+        notes: { type: string }
+        priority: { $ref: "#/components/schemas/Priority" }
+        due_date: { $ref: "#/components/schemas/DueDate" }
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string, description: Short message; never echoes input. }
+  responses:
+    BadRequest:
+      description: |
+        Malformed JSON, missing required field, empty title, unknown priority,
+        invalid due_date, body over 1 MiB, or (PUT) body id differs from path id.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example: { error: title must not be empty }
+    NotFound:
+      description: No task with this id, or the id is not a UUID.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example: { error: task not found }
+    ServerError:
+      description: Storage failure, or a simulated failure in chaos mode.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          examples:
+            simulated: { value: { error: simulated failure } }
+            internal: { value: { error: internal error } }
