@@ -1,10 +1,13 @@
 import Dependencies
 import Foundation
+import Logging
 
 extension NetworkClient {
-    /// Live composition. Selected middleware wraps the URLSession transport.
+    /// Live composition. Order (outer → inner): logging → transport, so each wire attempt is logged.
     static func liveComposed() -> NetworkClient {
+        @Dependency(\.logger) var logger
         let middlewares: [NetworkMiddleware] = [
+            .logging(logger: logger),
         ]
         return NetworkClient(send: middlewares.compose(around: urlSessionTransport(.shared)))
     }
