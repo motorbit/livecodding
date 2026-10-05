@@ -248,18 +248,19 @@ internal/httpapi/   routes, handlers, middleware (request ID, access log, recove
 openapi.yaml        contract; a test checks every registered route is documented
 ```
 
-## Connecting the iOS app (next step)
+## Connecting the iOS app
 
-Not implemented yet. The plan:
+Implemented in the app's `AppEnvironment` + `TaskClient` modules:
 
-1. **Base URL:** the simulator reaches the Mac at `http://localhost:8080`. A device needs the Mac's
-   LAN IP, or a tunnel.
-2. **ATS:** plain HTTP needs an App Transport Security exception for local development, e.g.
-   `NSAppTransportSecurity` → `NSAllowsLocalNetworking = YES` in the app's Info.plist, limited to
-   debug builds.
-3. **Client:** implement `TaskNetworkClient.liveValue` as an HTTP client over the existing
-   `NetworkClient` module. Use `Endpoint` for `GET/POST /tasks` and `PUT/DELETE /tasks/{id}`, and
-   `decode` for `TaskDTO`/`[TaskDTO]`. Map 400 → `.badRequest`, 404 → `.notFound` and 5xx →
-   `.serverError`. `TaskClient`, the features and the DTOs stay unchanged. Keep `MockNetworkClient`
-   for previews and tests.
-4. Optionally send `X-Request-ID` from the app so client and server logs correlate.
+1. **Base URL:** the `dev` environment is `http://localhost:8080` (the simulator reaches the Mac
+   there). Change it in `Modules/Sources/AppEnvironment/BuildValues+Generated.swift`, or on CI with
+   `API_BASE_URL_DEV=… scripts/generate-build-values.sh`. A device needs the Mac's `*.local` name
+   or a tunnel.
+2. **Switching:** run `make run`, then in the app tap the floating 🐞 button (bottom-left) → Debug Menu →
+   **Dev**. The choice persists; **Local** goes back to the in-app mock.
+3. **ATS:** `Config/Debug-Info.plist` adds `NSAllowsLocalNetworking`, wired for the Debug
+   configuration only, so Release builds keep full ATS.
+4. **Client:** `TaskNetworkClient+HTTP.swift` maps the endpoints with `Endpoint` and decodes through
+   `NetworkClient` (off the main actor, logged by its logging middleware). 400 → `.badRequest`,
+   404 → `.notFound`, other statuses → `.serverError`, no response → `.transport`.
+5. Not done yet: sending `X-Request-ID` from the app so client and server logs correlate.

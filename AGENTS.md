@@ -12,7 +12,7 @@ Rules for AI agents and developers working in this repository. The **HARD RULES*
   - event-driven MVVM;
   - DI with swift-dependencies;
   - Swift Testing.
-- **Dependencies:** `swift-dependencies` (dependency injection); NetworkClient (unused scaffold) provides typed HTTP transport, JSON decoding and endpoint construction; `TaskClient` talks to a DTO-level `MockNetworkClient`.
+- **Dependencies:** `swift-dependencies` (dependency injection); NetworkClient provides typed HTTP transport, JSON decoding and endpoint construction; `TaskClient` talks to a DTO-level `TaskNetworkClient` that picks the backend per call from `AppEnvironment` (`local` = in-app `MockNetworkClient`, `dev`/`prod` = HTTP, e.g. the Go server in `backend/`).
 
 ## Module map
 
@@ -23,11 +23,13 @@ Rules for AI agents and developers working in this repository. The **HARD RULES*
 | `TaskBoardFeature` | UI (MainActor) | Task list host: loading/retry, pull-to-refresh, completion, swipe-delete with undo, search/sort, due text, Add sheet and detail push |
 | `AddTaskFeature` | UI (MainActor) | Add-task sheet (incl. optional due date) owned by TaskBoardFeature |
 | `TaskDetailFeature` | UI (MainActor) | Task editor (incl. due date) pushed within TaskBoardFeature's navigation stack |
+| `DebugMenuFeature` | UI (MainActor) | Debug/non-prod sheet (floating 🐞 button) to switch the environment; coordinator overlay |
 | `DesignSystem` | UI (MainActor) | Color/typography/spacing tokens, basic components |
 | `Logging` | client | `LoggingClient` (`\.logger`), an os.Logger wrapper |
 | `L10n` | leaf | String Catalog + typed accessors |
-| `NetworkClient` | client | HTTP transport + middlewares; scaffold for a future real backend, currently unused |
-| `TaskClient` | client | Task repository (`TaskClient`) over the internal `TaskNetworkClient` boundary; live network = `MockNetworkClient` (latency, failures) |
+| `NetworkClient` | client | HTTP transport + logging middleware; used by `TaskClient`'s HTTP backend |
+| `TaskClient` | client | Task repository (`TaskClient`) over the internal `TaskNetworkClient` boundary; live = per-call backend from `AppEnvironment` (`MockNetworkClient` or HTTP) |
+| `AppEnvironment` | client | `EnvironmentClient`: local/dev/prod configs from `BuildValues+Generated.swift` (CI: `scripts/generate-build-values.sh`), debug override |
 
 <!-- Delete rows for modules the project doesn't have. Add every new module here. -->
 

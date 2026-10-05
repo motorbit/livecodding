@@ -25,14 +25,21 @@ TaskBoardFeature ─┬─ AddTaskFeature
         │
    TaskClient (repository: domain models, error mapping)
         │
-   TaskNetworkClient (DTO boundary, single swap point: liveValue)
+   TaskNetworkClient (DTO boundary; liveValue picks the backend per call from AppEnvironment)
         │
-   MockNetworkClient (actor: latency, ~15 % failures, seed-tasks.json)
+        ├─ local: MockNetworkClient (actor: latency, ~15 % failures, seed-tasks.json)
+        └─ dev / prod: HTTP over NetworkClient → backend/ (Go)
 ```
 
 ## Run
 
 - Open `livecodding.xcodeproj`, scheme **livecodding**, any iOS 17+ simulator.
+- The app starts on the **local** environment (in-app mock, no server needed). To use the Go
+  backend: `cd backend && make run`, then tap the floating 🐞 button (bottom-left) to open the
+  **Debug Menu** and pick **Dev** (`http://localhost:8080`). Base URLs live in
+  [`BuildValues+Generated.swift`](Modules/Sources/AppEnvironment/BuildValues+Generated.swift);
+  CI regenerates it with `scripts/generate-build-values.sh` (see
+  [AppEnvironment](Modules/Sources/AppEnvironment/README.md)).
 - Package tests (from `Modules/`):
   `xcodebuild test -scheme Modules-Package -destination 'platform=iOS Simulator,name=<Simulator>'`
 
@@ -76,7 +83,7 @@ TaskBoardFeature ─┬─ AddTaskFeature
 
 **Quality**
 
-- ✅ 103 Swift Testing tests; deterministic clock, latency and failure injection (no `Task.sleep`)
+- ✅ 121 Swift Testing tests; deterministic clock, latency and failure injection (no `Task.sleep`)
 - ✅ Async-race protection (stored tasks, generation counters, restart of stale loads)
 - ✅ Two code reviews against the brief; findings fixed in PR #22
 
@@ -98,9 +105,8 @@ reload banner (with Retry) if that load fails too.
 Ideas that follow from the brief's "treat it like the start of a real product":
 
 - ✅ **[Backend in Go](backend/README.md)** — implemented: a small REST service (`GET/POST /tasks`,
-  `PUT/DELETE /tasks/{id}`) with the same `TaskDTO` JSON contract. iOS integration is still TODO:
-  implement `TaskNetworkClient.liveValue` on top of the existing `NetworkClient` module; the
-  repository and features stay unchanged.
+  `PUT/DELETE /tasks/{id}`) with the same `TaskDTO` JSON contract. The app talks to it in the
+  **dev** environment (Debug Menu); the repository and features are unchanged.
 - **Persistence / caching** — on-disk cache (SwiftData) behind `TaskClient` for offline start and
   instant first paint, refreshed from the network.
 - **Live updates** — expose changes as an `AsyncStream` (the brief's alternative API shape) so
