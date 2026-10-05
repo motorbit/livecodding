@@ -65,6 +65,7 @@ let package = Package(
     products: Module.allCases.map { .library(name: $0.name, targets: [$0.name]) },
     dependencies: [
         .package(url: "https://github.com/pointfreeco/swift-dependencies", from: "1.9.0"),
+        .package(url: "https://github.com/groue/GRDB.swift", from: "7.0.0"),
     ],
     targets: [
         // Composition root: the only module that imports every feature.
@@ -73,6 +74,7 @@ let package = Package(
             .module(.taskBoardFeature),
             .module(.debugMenuFeature),
             .module(.appEnvironment),
+            .module(.taskClient),
             .module(.logging),
             .dependencies,
         ], testDependencies: [
@@ -80,6 +82,7 @@ let package = Package(
             .module(.taskBoardFeature),
             .module(.debugMenuFeature),
             .module(.appEnvironment),
+            .module(.taskClient),
             .module(.logging),
         ]),
 
@@ -143,6 +146,7 @@ let package = Package(
             .module(.logging),
             .dependencies,
             .dependenciesMacros,
+            .grdb,
         ], resources: [.process("Resources")], testDependencies: [
             .module(.appEnvironment),
             .module(.networkClient),
@@ -243,5 +247,9 @@ extension Target.Dependency {
 
     static var dependenciesMacros: Target.Dependency {
         .product(name: "DependenciesMacros", package: "swift-dependencies")
+    }
+
+    static var grdb: Target.Dependency {
+        .product(name: "GRDB", package: "GRDB.swift")
     }
 }

@@ -12,6 +12,7 @@ private struct TestError: Error {}
 
 private func makeDependencies(_ dependencies: inout DependencyValues) {
     dependencies.taskClient.fetchTasks = { TaskItem.samples }
+    dependencies.taskClient.cachedTasks = { [] }
     dependencies.taskClient.updateTask = { $0 }
 }
 
@@ -227,6 +228,96 @@ struct TaskBoardLoadingTests {
 
         #expect(calls.value == 3)
         #expect(sut.state.rows[0].isComplete)
+    }
+}
+
+@MainActor
+struct TaskBoardCacheTests {
+    @Test("""
+        Given cached tasks,
+        When the board appears,
+        Then the cached rows show before the fetch returns and are then replaced
+        """)
+    func cachedTasksShowFirst() async {
+        let cached = [TaskItem(id: UUID(), title: "Cached", priority: .low)]
+        let (started, startedContinuation) = AsyncStream<Void>.makeStream()
+        let (gate, gateContinuation) = AsyncStream<[TaskItem]>.makeStream()
+        let sut = withDependencies {
+            makeDependencies(&$0)
+            $0.taskClient.cachedTasks = { cached }
+            $0.taskClient.fetchTasks = {
+                startedContinuation.yield()
+                for await items in gate { return items }
+                throw CancellationError()
+            }
+        } operation: { TaskBoardViewModel() }
+
+        sut.trigger(.onAppear)
+        var startedIterator = started.makeAsyncIterator()
+        _ = await startedIterator.next()
+
+        #expect(sut.state.phase == .content)
+        #expect(sut.state.rows.map(\.id) == cached.map(\.id))
+        #expect(sut.state.reloadErrorMessage == nil)
+
+        gateContinuation.yield(TaskItem.samples)
+        gateContinuation.finish()
+        await sut.loadTask?.value
+
+        #expect(sut.state.rows.map(\.id) == TaskItem.samples.map(\.id))
+        #expect(sut.state.reloadErrorMessage == nil)
+    }
+
+    @Test("""
+        Given cached tasks and an unreachable server,
+        When the board appears and Retry fails again,
+        Then the cached rows stay with the offline banner until a fetch succeeds
+        """)
+    func failedFetchKeepsCachedRowsWithOfflineBanner() async {
+        let cached = [TaskItem(id: UUID(), title: "Cached", priority: .low)]
+        let calls = LockIsolated(0)
+        let sut = withDependencies {
+            makeDependencies(&$0)
+            $0.taskClient.cachedTasks = { cached }
+            $0.taskClient.fetchTasks = {
+                let call = calls.withValue { $0 += 1; return $0 }
+                guard call > 2 else { throw TestError() }
+                return TaskItem.samples
+            }
+        } operation: { TaskBoardViewModel() }
+
+        sut.trigger(.onAppear)
+        await sut.loadTask?.value
+        #expect(sut.state.phase == .content)
+        #expect(sut.state.rows.map(\.id) == cached.map(\.id))
+        #expect(sut.state.reloadErrorMessage == L10n.TaskBoard.offlineError)
+
+        sut.trigger(.retryTapped)
+        await sut.loadTask?.value
+        #expect(sut.state.reloadErrorMessage == L10n.TaskBoard.offlineError)
+
+        sut.trigger(.retryTapped)
+        await sut.loadTask?.value
+        #expect(sut.state.rows.map(\.id) == TaskItem.samples.map(\.id))
+        #expect(sut.state.reloadErrorMessage == nil)
+    }
+
+    @Test("""
+        Given the cache can't be read,
+        When the board appears,
+        Then it ignores the cache and shows the fetched tasks
+        """)
+    func unreadableCacheIsIgnored() async {
+        let sut = withDependencies {
+            makeDependencies(&$0)
+            $0.taskClient.cachedTasks = { throw TestError() }
+        } operation: { TaskBoardViewModel() }
+
+        sut.trigger(.onAppear)
+        await sut.loadTask?.value
+
+        #expect(sut.state.phase == .content)
+        #expect(sut.state.rows.map(\.id) == TaskItem.samples.map(\.id))
     }
 }
 
@@ -478,11 +569,8 @@ struct TaskBoardAddTests {
         let sut = withDependencies {
             makeDependencies(&$0)
             $0.taskClient.fetchTasks = {
-                let call = calls.withValue { $0 += 1; return $0 }
-                if call == 1 {
-                    for await _ in gate { break }
-                    return TaskItem.samples
-                }
+                calls.withValue { $0 += 1 }
+                for await _ in gate { break }
                 return TaskItem.samples + [created]
             }
         } operation: { TaskBoardViewModel() }
@@ -498,7 +586,8 @@ struct TaskBoardAddTests {
         await firstLoad?.value
         await sut.loadTask?.value
 
-        #expect(calls.value == 2)
+        // The cancelled initial load stops before reaching the network.
+        #expect(calls.value == 1)
         #expect(sut.state.phase == .content)
         #expect(sut.state.reloadErrorMessage == nil)
         #expect(sut.state.rows.map(\.id) == TaskItem.samples.map(\.id) + [created.id])

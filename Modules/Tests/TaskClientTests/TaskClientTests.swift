@@ -1,7 +1,13 @@
+import AppEnvironment
 import Dependencies
 import Foundation
 import Testing
 @testable import TaskClient
+
+private func makeDependencies(_ dependencies: inout DependencyValues) {
+    dependencies.environmentClient.current = { EnvironmentConfig(environment: .local, apiBackend: .mock) }
+    dependencies.taskCacheClient = .inMemory()
+}
 
 struct TaskClientTests {
     @Test("""
@@ -11,6 +17,7 @@ struct TaskClientTests {
         """)
     func repositoryRoundTripsThroughMockNetwork() async throws {
         try await withDependencies {
+            makeDependencies(&$0)
             $0.taskNetworkClient = .mock(policy: .instant)
         } operation: {
             let sut = TaskClient.repository
@@ -50,6 +57,7 @@ struct TaskClientTests {
         ])
     func mapsNetworkErrors(networkError: TaskNetworkError, expected: TaskClientError) async {
         await withDependencies {
+            makeDependencies(&$0)
             $0.taskNetworkClient.fetchTasks = { throw networkError }
             $0.taskNetworkClient.createTask = { _ in throw networkError }
             $0.taskNetworkClient.updateTask = { _ in throw networkError }
@@ -70,6 +78,7 @@ struct TaskClientTests {
         """)
     func malformedResponseMapsToUnavailable() async {
         await withDependencies {
+            makeDependencies(&$0)
             $0.taskNetworkClient.fetchTasks = {
                 [TaskDTO(id: UUID(), title: "Bad", notes: "", priority: .low, done: false, dueDate: "nope")]
             }
@@ -87,6 +96,7 @@ struct TaskClientTests {
         """)
     func cancellationPropagates() async {
         await withDependencies {
+            makeDependencies(&$0)
             $0.taskNetworkClient.fetchTasks = { throw CancellationError() }
         } operation: {
             await #expect(throws: CancellationError.self) {

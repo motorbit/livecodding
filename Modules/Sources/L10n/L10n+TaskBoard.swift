@@ -23,6 +23,9 @@ public extension L10n {
         public static var reloadError: String {
             String(localized: "taskBoard.error.reload", defaultValue: "Couldn't refresh tasks. Showing the last loaded list.", bundle: .module)
         }
+        public static var offlineError: String {
+            String(localized: "taskBoard.error.offline", defaultValue: "Can't reach the server. Showing saved tasks.", bundle: .module)
+        }
         public static var completionError: String {
             String(localized: "taskBoard.error.completion", defaultValue: "Couldn't update this task.", bundle: .module)
         }

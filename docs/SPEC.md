@@ -50,6 +50,8 @@ The list has a Task Board title and an Add action. The Add form contains require
 
 None. `MockNetworkClient`'s in-memory state is the source of truth for the current process; tasks reset to the provided examples after relaunch. No `Storage` module.
 
+*Superseded by R8:* an on-disk cache (not a source of truth) keeps the last known list; it is cleared on every environment switch.
+
 ## Design
 
 - Use the existing `DesignSystem` semantic asset colors, system typography, spacing/radius tokens and components. Retain light/dark asset appearances; no custom brand palette or font.
@@ -125,3 +127,4 @@ English only for this exercise, using the existing String Catalog and typed `L10
 - **R5:** Stretch goals in scope: search by title, sort by priority/status, due dates with relative formatting.
 - **R6:** Remove the unused HomeFeature; keep the iOS 17.0 minimum (satisfies "iOS 16+").
 - **R7 (post-challenge, 2026-10-06):** Environment switching is now in scope, superseding the non-goal. `AppEnvironment` has `local` (in-app mock), `dev` (`http://localhost:8080`, the Go server in `backend/`) and `prod` (no URL yet; calls fail with `apiBaseURLMissing`). Values come from a committed `BuildValues+Generated.swift` that CI regenerates (`scripts/generate-build-values.sh`); no xcconfig. `TaskNetworkClient.liveValue` picks mock or HTTP per call. A Debug Menu opened from a floating button switches environments in debug/non-prod builds (ordered reset in the coordinator). `NSAllowsLocalNetworking` is added for Debug only via `Config/Debug-Info.plist`.
+- **R8 (post-challenge, 2026-10-06):** Offline cache is now in scope, superseding "persistence across launches" as a non-goal. `TaskClient` writes every successful fetch/create/update/delete through to an internal GRDB `TaskCacheClient` (SQLite in Caches); cache write errors are logged, never surfaced. New `TaskClient.cachedTasks` and `TaskClient.clearCache`; `AppCoordinator.switchEnvironment` clears the cache as step 3 of the ordered reset. Rows stay tagged with their environment and are read by the current one, so a response landing after the switch never appears in the new environment. On a load with nothing on screen, `TaskBoardFeature` shows cached tasks first (stale-while-revalidate); if the fetch then fails, the cached list stays with the reload banner reading "Can't reach the server. Showing saved tasks." and Retry. The server stays the source of truth: no offline writes or sync queue.

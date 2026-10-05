@@ -28,6 +28,8 @@ public final class TaskBoardViewModel: ObservableObject {
     private var undoGeneration = 0
     private var mutationGeneration = 0
     private var tasks: [TaskItem] = []
+    /// `tasks` came from the on-disk cache and no fetch has succeeded since.
+    private var isShowingCachedTasks = false
     private var rowStatus: [UUID: RowStatus] = [:]
     /// Swiped row that can still be undone. Not sent to the API yet.
     private var pendingDeletion: PendingDeletion?
@@ -144,6 +146,7 @@ public final class TaskBoardViewModel: ObservableObject {
     // MARK: - Effects
 
     private enum InternalAction {
+        case cachedLoaded([TaskItem])
         case loaded([TaskItem])
         case loadFailed
         case completionSucceeded(TaskItem)
@@ -155,19 +158,18 @@ public final class TaskBoardViewModel: ObservableObject {
 
     private func handle(_ action: InternalAction) {
         switch action {
+        case .cachedLoaded(let items):
+            isShowingCachedTasks = true
+            apply(items)
         case .loaded(let items):
-            var hidden = Set(hiddenDeletions.keys)
-            if let pendingDeletion { hidden.insert(pendingDeletion.row.item.id) }
-            tasks = items.filter { !hidden.contains($0.id) }
-            let ids = Set(items.map(\.id)).union(hidden)
-            rowStatus = rowStatus.filter { ids.contains($0.key) }
-            state.reloadErrorMessage = nil
-            state.phase = tasks.isEmpty ? .empty : .content
-            rebuildRows()
+            isShowingCachedTasks = false
+            apply(items)
         case .loadFailed:
             switch state.phase {
             case .content, .empty:
-                state.reloadErrorMessage = L10n.TaskBoard.reloadError
+                state.reloadErrorMessage = isShowingCachedTasks
+                    ? L10n.TaskBoard.offlineError
+                    : L10n.TaskBoard.reloadError
             case .loading, .failed:
                 state.phase = .failed
             }
@@ -206,21 +208,44 @@ public final class TaskBoardViewModel: ObservableObject {
         }
     }
 
+    private func apply(_ items: [TaskItem]) {
+        var hidden = Set(hiddenDeletions.keys)
+        if let pendingDeletion { hidden.insert(pendingDeletion.row.item.id) }
+        tasks = items.filter { !hidden.contains($0.id) }
+        let ids = Set(items.map(\.id)).union(hidden)
+        rowStatus = rowStatus.filter { ids.contains($0.key) }
+        state.reloadErrorMessage = nil
+        state.phase = tasks.isEmpty ? .empty : .content
+        rebuildRows()
+    }
+
+    /// Stale-while-revalidate: when nothing is on screen yet, cached tasks are shown first, then
+    /// replaced by the fetched list. If the fetch fails, the cached list stays with an offline
+    /// banner.
     private func load() {
         loadTask?.cancel()
         loadGeneration += 1
         let generation = loadGeneration
         let currentMutationGeneration = mutationGeneration
         let client = taskClient
+        let showsCache: Bool
         switch state.phase {
         case .loading, .failed:
             state.phase = .loading
+            showsCache = true
         case .content, .empty:
-            break
+            showsCache = false
         }
         state.reloadErrorMessage = nil
 
         loadTask = Task { [weak self] in
+            if showsCache, let cached = try? await client.cachedTasks(), !cached.isEmpty {
+                guard !Task.isCancelled, self?.loadGeneration == generation else { return }
+                if self?.mutationGeneration == currentMutationGeneration {
+                    self?.handle(.cachedLoaded(cached))
+                }
+            }
+            guard !Task.isCancelled else { return }
             let action: InternalAction
             do {
                 action = .loaded(try await client.fetchTasks())
