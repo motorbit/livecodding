@@ -71,6 +71,8 @@ public final class TaskDetailViewModel: ObservableObject {
             state.isDeleteConfirmationPresented = false
             delete()
         case .deleteCancelled:
+            // The alert binding also reports dismissal after a button action, inside a view update.
+            guard state.isDeleteConfirmationPresented else { return }
             state.isDeleteConfirmationPresented = false
         case .retryTapped:
             switch retryOperation {

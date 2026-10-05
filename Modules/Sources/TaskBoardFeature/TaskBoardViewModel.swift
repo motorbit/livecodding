@@ -120,7 +120,7 @@ public final class TaskBoardViewModel: ObservableObject {
             guard path != state.navigationPath else { return }
             if path.isEmpty, detailViewModel != nil, state.isDetailDirty {
                 // Keep the pushed route until the user explicitly discards.
-                state.isDiscardConfirmationPresented = true
+                if !state.isDiscardConfirmationPresented { state.isDiscardConfirmationPresented = true }
                 return
             }
             state.navigationPath = path
@@ -135,6 +135,8 @@ public final class TaskBoardViewModel: ObservableObject {
             guard state.isDiscardConfirmationPresented else { return }
             popDetail()
         case .discardCancelled:
+            // The alert binding also reports dismissal after a button action, inside a view update.
+            guard state.isDiscardConfirmationPresented else { return }
             state.isDiscardConfirmationPresented = false
         }
     }

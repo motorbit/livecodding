@@ -1,4 +1,5 @@
 @testable import AddTaskFeature
+import Combine
 import Dependencies
 import Foundation
 import L10n
@@ -608,6 +609,38 @@ struct TaskBoardDetailTests {
         #expect(sut.state.navigationPath == [.detail(id: firstID)])
         #expect(sut.detailViewModel === child)
         #expect(child?.state == childState)
+    }
+
+    @Test("""
+        Given the discard alert is shown or was closed by Discard or Cancel,
+        When the bindings report the same pop or dismissal again,
+        Then the view model publishes no further change
+        """)
+    func repeatedDiscardCancelDoesNotPublish() async {
+        let sut = withDependencies { makeDependencies(&$0) } operation: { TaskBoardViewModel() }
+        sut.trigger(.onAppear)
+        await sut.loadTask?.value
+        var changes = 0
+        let cancellable = sut.objectWillChange.sink { changes += 1 }
+
+        sut.trigger(.taskTapped(firstID))
+        sut.detailViewModel?.onEvent?(.dirtyChanged(true))
+        sut.trigger(.detailBackTapped)
+        changes = 0
+        sut.trigger(.navigationPathChanged([]))
+        #expect(changes == 0)
+        sut.trigger(.discardCancelled)
+        changes = 0
+        sut.trigger(.discardCancelled)
+        #expect(changes == 0)
+
+        sut.trigger(.detailBackTapped)
+        sut.trigger(.discardConfirmed)
+        changes = 0
+        sut.trigger(.discardCancelled)
+        #expect(changes == 0)
+        #expect(sut.state.navigationPath.isEmpty)
+        cancellable.cancel()
     }
 
     @Test("""

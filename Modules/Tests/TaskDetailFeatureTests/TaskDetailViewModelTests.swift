@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import Dependencies
 import L10n
@@ -184,6 +185,27 @@ struct TaskDetailViewModelTests {
 
         #expect(deletedIDs.value == [task.id])
         #expect(events == [.deleted(task.id)])
+    }
+
+    @Test("""
+        Given the delete alert was dismissed with Cancel,
+        When the alert binding reports dismissal again,
+        Then the view model publishes no further change
+        """)
+    func repeatedDeleteCancelDoesNotPublish() {
+        let sut = withDependencies { makeDependencies(&$0) } operation: {
+            TaskDetailViewModel(state: TaskDetailViewState(task: sampleTask()))
+        }
+        sut.trigger(.deleteTapped)
+        sut.trigger(.deleteCancelled)
+        var changes = 0
+        let cancellable = sut.objectWillChange.sink { changes += 1 }
+
+        sut.trigger(.deleteCancelled)
+
+        #expect(changes == 0)
+        #expect(sut.state.isDeleteConfirmationPresented == false)
+        cancellable.cancel()
     }
 
     @Test("""
