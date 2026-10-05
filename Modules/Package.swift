@@ -129,6 +129,9 @@ let package = Package(
         clientModule(.networkClient, dependencies: [
             .dependencies,
             .dependenciesMacros,
+            .module(.logging),
+        ], testDependencies: [
+            .module(.logging),
         ]),
 
         // Leaves

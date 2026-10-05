@@ -1,3 +1,4 @@
+import Dependencies
 import Foundation
 import Testing
 @testable import NetworkClient
@@ -60,4 +61,26 @@ struct NetworkClientJSONTests {
             try await sut.decode(Item.self, for: request)
         }
     }
+
+    @Test("""
+        Given a MainActor caller,
+        When decode and sendChecked are called,
+        Then the transport runs off the main thread
+        """)
+    @MainActor
+    func exchangeRunsOffMain() async throws {
+        let transportOnMain = LockIsolated<[Bool]>([])
+        let sut = NetworkClient { request in
+            transportOnMain.withValue { $0.append(isMainThread()) }
+            return (Data(#"{"id":1}"#.utf8), .stub(request, status: 200))
+        }
+
+        _ = try await sut.decode(Item.self, for: request)
+        _ = try await sut.sendChecked(request)
+
+        #expect(transportOnMain.value == [false, false])
+    }
 }
+
+/// Sync wrapper: `Thread.isMainThread` is unavailable in async contexts.
+private func isMainThread() -> Bool { Thread.isMainThread }
