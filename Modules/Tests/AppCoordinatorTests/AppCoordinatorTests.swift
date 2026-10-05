@@ -6,6 +6,7 @@ import Dependencies
 import Foundation
 import Logging
 import TaskBoardFeature
+import TaskClient
 import Testing
 @testable import AppCoordinator
 
@@ -141,9 +142,9 @@ struct AppCoordinatorTests {
     @Test("""
         Given the Task Board with the debug menu open,
         When another environment is requested,
-        Then the override is saved before the old screen is dropped and the app restarts from bootstrap
+        Then the override is saved, the old screen is dropped, the task cache is cleared and the app restarts from bootstrap
         """)
-    func environmentSwitchRunsOrderedReset() {
+    func environmentSwitchRunsOrderedReset() async {
         let calls = LockIsolated<[String]>([])
         let sut = withDependencies {
             makeDependencies(&$0)
@@ -153,6 +154,7 @@ struct AppCoordinatorTests {
             $0.logger.log = { _, message, metadata in
                 if message == "Navigate" { calls.withValue { $0.append("navigate(\(metadata["route"] ?? ""))") } }
             }
+            $0.taskClient.clearCache = { calls.withValue { $0.append("clearCache") } }
         } operation: {
             AppCoordinator(initialRoute: .taskBoard)
         }
@@ -162,8 +164,9 @@ struct AppCoordinatorTests {
         calls.setValue([])
 
         sut.debugMenu?.onEvent?(.environmentChangeRequested(.dev))
+        await sut.cacheResetTask?.value
 
-        #expect(calls.value == ["setOverride(dev)", "navigate(bootstrap)"])
+        #expect(calls.value == ["setOverride(dev)", "navigate(bootstrap)", "clearCache"])
         #expect(sut.debugMenu == nil)
         #expect(oldTaskBoard == nil)
         guard case .bootstrap? = sut.screen else {
@@ -177,6 +180,7 @@ struct AppCoordinatorTests {
 private func makeDependencies(_ dependencies: inout DependencyValues) {
     dependencies.logger.log = { _, _, _ in }
     dependencies.logger.logError = { _, _ in }
+    dependencies.taskClient.clearCache = {}
     dependencies.environmentClient.selectableEnvironments = {
         [EnvironmentConfig(environment: .local, apiBackend: .mock)]
     }

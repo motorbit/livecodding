@@ -5,6 +5,7 @@ import DebugMenuFeature
 import Dependencies
 import Logging
 import TaskBoardFeature
+import TaskClient
 
 /// Composition root. Turns an `AppRoute` into a live `AppScreen`, wires the screen's output events
 /// and runs route-entry effects. Features never import this module (ADR 0002).
@@ -23,9 +24,16 @@ public final class AppCoordinator: ObservableObject {
     // through these, so keep at least one `@Dependency` here.
     @Dependency(\.logger) private var logger
     @Dependency(\.environmentClient) private var environmentClient
+    @Dependency(\.taskClient) private var taskClient
+
+    var cacheResetTask: Task<Void, Never>?
 
     public init(initialRoute: AppRoute = .bootstrap) {
         navigate(to: initialRoute)
+    }
+
+    deinit {
+        cacheResetTask?.cancel()
     }
 
     /// The single navigation entry point: build the screen, then run its entry effects.
@@ -88,13 +96,18 @@ public final class AppCoordinator: ObservableObject {
     /// 1. persist the override;
     /// 2. drop the overlay and the current screen, which cancels in-flight work (VMs cancel their
     ///    tasks in `deinit`);
-    /// 3. clear environment-bound state (none yet: add tokens, caches, analytics reset here);
-    /// 4. start over from the initial route.
+    /// 3. clear environment-bound state: the task cache (async; a failure is logged by `TaskClient`
+    ///    and the next fetch replaces the cache anyway). Add tokens and analytics reset here;
+    /// 4. start over from the initial route. It doesn't wait for step 3: cache rows are tagged with
+    ///    their environment, so the new screens never read the old environment's tasks.
     func switchEnvironment(to environment: AppEnvironment) {
         logger.notice("Switching environment", ["environment": environment.rawValue])
         environmentClient.setOverride(environment)
         debugMenu = nil
         screen = nil
+        cacheResetTask?.cancel()
+        let client = taskClient
+        cacheResetTask = Task { try? await client.clearCache() }
         navigate(to: .bootstrap)
     }
 
