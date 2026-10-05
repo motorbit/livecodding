@@ -65,14 +65,22 @@ public enum TaskClientError: Error, Equatable, Sendable {
 
 @DependencyClient
 public struct TaskClient: Sendable {
+    /// Fetches from the network and refreshes the on-disk cache.
     public var fetchTasks: @Sendable () async throws -> [TaskItem]
+    /// The last fetched list for the active environment, kept up to date by every successful
+    /// mutation. Empty when nothing is cached or the environment changed since. Shown before
+    /// `fetchTasks` returns.
+    public var cachedTasks: @Sendable () async throws -> [TaskItem]
+    /// Empties the on-disk cache. Called when the environment changes.
+    public var clearCache: @Sendable () async throws -> Void
     public var createTask: @Sendable (_ draft: TaskDraft) async throws -> TaskItem
     public var updateTask: @Sendable (_ task: TaskItem) async throws -> TaskItem
     public var deleteTask: @Sendable (_ id: UUID) async throws -> Void
 }
 
 extension TaskClient: DependencyKey {
-    /// Repository over `\.taskNetworkClient`. In previews that resolves to the instant mock.
+    /// Repository over `\.taskNetworkClient` and `\.taskCacheClient`. In previews those resolve to
+    /// the instant mock and an in-memory cache.
     public static let liveValue = TaskClient.repository
     public static let previewValue = TaskClient.repository
     public static let testValue = TaskClient()
