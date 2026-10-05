@@ -409,6 +409,99 @@ struct TaskBoardAddTests {
         #expect(sut.addViewModel == nil)
         #expect(sut.state.rows.map(\.id) == TaskItem.samples.map(\.id))
     }
+
+    @Test("""
+        Given the initial load failed,
+        When a task is created and the follow-up load succeeds,
+        Then the board shows the fetched tasks without an error
+        """)
+    func createdAfterFailedLoadReloads() async {
+        let created = TaskItem(id: UUID(), title: "New", priority: .medium)
+        let calls = LockIsolated(0)
+        let sut = withDependencies {
+            makeDependencies(&$0)
+            $0.taskClient.fetchTasks = {
+                let call = calls.withValue { $0 += 1; return $0 }
+                guard call > 1 else { throw TestError() }
+                return TaskItem.samples + [created]
+            }
+        } operation: { TaskBoardViewModel() }
+        sut.trigger(.onAppear)
+        await sut.loadTask?.value
+        #expect(sut.state.phase == .failed)
+
+        sut.trigger(.addTapped)
+        sut.addViewModel?.onEvent?(.created(created))
+        #expect(sut.state.rows.map(\.id) == [created.id])
+        await sut.loadTask?.value
+
+        #expect(calls.value == 2)
+        #expect(sut.addViewModel == nil)
+        #expect(sut.state.phase == .content)
+        #expect(sut.state.reloadErrorMessage == nil)
+        #expect(sut.state.rows.map(\.id) == TaskItem.samples.map(\.id) + [created.id])
+    }
+
+    @Test("""
+        Given the initial load failed,
+        When a task is created and the follow-up load fails again,
+        Then the new task stays visible with the reload error banner
+        """)
+    func createdAfterFailedLoadShowsReloadError() async {
+        let created = TaskItem(id: UUID(), title: "New", priority: .medium)
+        let sut = withDependencies {
+            makeDependencies(&$0)
+            $0.taskClient.fetchTasks = { throw TestError() }
+        } operation: { TaskBoardViewModel() }
+        sut.trigger(.onAppear)
+        await sut.loadTask?.value
+
+        sut.trigger(.addTapped)
+        sut.addViewModel?.onEvent?(.created(created))
+        await sut.loadTask?.value
+
+        #expect(sut.state.phase == .content)
+        #expect(sut.state.rows.map(\.id) == [created.id])
+        #expect(sut.state.reloadErrorMessage == L10n.TaskBoard.reloadError)
+    }
+
+    @Test("""
+        Given the initial load is still in flight,
+        When a task is created,
+        Then the board reloads and shows the fetched tasks
+        """)
+    func createdDuringInitialLoadReloads() async {
+        let created = TaskItem(id: UUID(), title: "New", priority: .medium)
+        let (gate, release) = AsyncStream<Void>.makeStream()
+        let calls = LockIsolated(0)
+        let sut = withDependencies {
+            makeDependencies(&$0)
+            $0.taskClient.fetchTasks = {
+                let call = calls.withValue { $0 += 1; return $0 }
+                if call == 1 {
+                    for await _ in gate { break }
+                    return TaskItem.samples
+                }
+                return TaskItem.samples + [created]
+            }
+        } operation: { TaskBoardViewModel() }
+        sut.trigger(.onAppear)
+        let firstLoad = sut.loadTask
+
+        sut.trigger(.addTapped)
+        sut.addViewModel?.onEvent?(.created(created))
+        #expect(sut.loadTask != firstLoad)
+        #expect(firstLoad?.isCancelled == true)
+        release.yield()
+        release.finish()
+        await firstLoad?.value
+        await sut.loadTask?.value
+
+        #expect(calls.value == 2)
+        #expect(sut.state.phase == .content)
+        #expect(sut.state.reloadErrorMessage == nil)
+        #expect(sut.state.rows.map(\.id) == TaskItem.samples.map(\.id) + [created.id])
+    }
 }
 
 @MainActor

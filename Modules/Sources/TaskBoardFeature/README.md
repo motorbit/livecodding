@@ -18,6 +18,8 @@ Top-level Task Board screen (route `.taskBoard` in `AppCoordinator`). Owner: Tas
   both created with `withDependencies(from: self)` and wired through `onEvent`. The host never
   calls a child's `trigger`.
 - `AddTask`: `.created` appends (API order preserved) and dismisses; `.closeRequested` dismisses.
+  If the board had no loaded list yet (`.loading`/`.failed`), `.created` also starts a reload so the
+  rest of the tasks appear; a failure there shows the reload banner with Retry.
 - `TaskDetail`: `.dirtyChanged` gates Back; `.updated` replaces by ID and stays; `.deleted` removes and pops.
 - Dirty Back: the system back button is hidden while dirty and replaced by a host Back button; a
   path change to `[]` while dirty (e.g. swipe) is rejected and shows the discard confirmation.
