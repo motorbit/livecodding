@@ -83,7 +83,7 @@ TaskBoardFeature ─┬─ AddTaskFeature
 
 **Quality**
 
-- ✅ 121 Swift Testing tests; deterministic clock, latency and failure injection (no `Task.sleep`)
+- ✅ 136 Swift Testing tests; deterministic clock, latency and failure injection (no `Task.sleep`)
 - ✅ Async-race protection (stored tasks, generation counters, restart of stale loads)
 - ✅ Two code reviews against the brief; findings fixed in PR #22
 
@@ -107,8 +107,9 @@ Ideas that follow from the brief's "treat it like the start of a real product":
 - ✅ **[Backend in Go](backend/README.md)** — implemented: a small REST service (`GET/POST /tasks`,
   `PUT/DELETE /tasks/{id}`) with the same `TaskDTO` JSON contract. The app talks to it in the
   **dev** environment (Debug Menu); the repository and features are unchanged.
-- **Persistence / caching** — on-disk cache (SwiftData) behind `TaskClient` for offline start and
-  instant first paint, refreshed from the network.
+- ✅ **Persistence / caching** — implemented: an on-disk SQLite cache (GRDB) behind `TaskClient`,
+  cleared on every environment switch. The board shows cached tasks first, refreshes from the network, and keeps
+  the cached list with a "Showing saved tasks" banner when the server can't be reached.
 - **Live updates** — expose changes as an `AsyncStream` (the brief's alternative API shape) so
   several screens stay in sync without manual list patching.
 - **Optimistic completion** — toggle immediately with rollback on failure, like swipe-delete.
