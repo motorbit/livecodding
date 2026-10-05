@@ -8,23 +8,29 @@ import Logging
 /// `\.taskCacheClient`, scoped to the active environment. Dependencies are resolved per call, so
 /// overriding them (tests, previews, an environment switch) is enough.
 ///
-/// Cache writes never fail an operation: the network result is the truth, so a cache error is
-/// only logged.
+/// Cache writes never fail an online operation: the network result is the truth, so a cache error
+/// is only logged. Offline, the queue is the only copy of the change, so failing to queue it
+/// throws the original `.unavailable`.
 extension TaskClient {
     static let repository = TaskClient(
         fetchTasks: {
             @Dependency(\.taskNetworkClient) var network
             let scope = cacheScope()
+            try await syncPendingChanges(scope: scope)
             let tasks = try await mapErrors {
                 try await network.fetchTasks().map { try $0.toDomain() }
             }
             await updateCache { cache in try await cache.replaceAll(scope, tasks) }
-            return tasks
+            return await applyingPendingChanges(to: tasks, scope: scope)
         },
         cachedTasks: {
             @Dependency(\.taskCacheClient) var cache
+            let scope = cacheScope()
             return try await logCacheErrors("taskCache.read") {
-                try await cache.tasks(cacheScope())
+                PendingChanges.apply(
+                    try await cache.pendingChanges(scope),
+                    to: try await cache.tasks(scope)
+                )
             }
         },
         clearCache: {
@@ -35,36 +41,91 @@ extension TaskClient {
         },
         createTask: { draft in
             @Dependency(\.taskNetworkClient) var network
+            @Dependency(\.uuid) var uuid
             let scope = cacheScope()
-            let task = try await mapErrors {
-                try await network.createTask(TaskDraftDTO(draft)).toDomain()
+            do {
+                let task = try await mapErrors {
+                    try await network.createTask(TaskDraftDTO(draft)).toDomain()
+                }
+                await updateCache { cache in try await cache.upsert(scope, task) }
+                return task
+            } catch TaskClientError.unavailable {
+                let task = TaskItem(
+                    id: uuid(),
+                    title: try validatedTitle(draft.title),
+                    notes: draft.notes,
+                    priority: draft.priority,
+                    dueDate: draft.dueDate,
+                    isPendingSync: true
+                )
+                try await enqueue(.create(task), scope: scope)
+                return task
             }
-            await updateCache { cache in try await cache.upsert(scope, task) }
-            return task
         },
         updateTask: { task in
             @Dependency(\.taskNetworkClient) var network
             let scope = cacheScope()
-            let saved = try await mapErrors {
-                try await network.updateTask(TaskDTO(task)).toDomain()
+            var queued = task
+            queued.title = try validatedTitle(task.title)
+            queued.isPendingSync = true
+            let resolved = await resolve(task.id, scope: scope)
+            guard !resolved.hasPendingChange else {
+                try await enqueue(.update(queued), scope: scope)
+                return queued
             }
-            await updateCache { cache in try await cache.upsert(scope, saved) }
-            return saved
+            let request = TaskItem(
+                id: resolved.id,
+                title: task.title,
+                notes: task.notes,
+                priority: task.priority,
+                isComplete: task.isComplete,
+                dueDate: task.dueDate
+            )
+            do {
+                let saved = try await mapErrors {
+                    try await network.updateTask(TaskDTO(request)).toDomain()
+                }
+                await updateCache { cache in try await cache.upsert(scope, saved) }
+                return TaskItem(
+                    id: task.id,
+                    title: saved.title,
+                    notes: saved.notes,
+                    priority: saved.priority,
+                    isComplete: saved.isComplete,
+                    dueDate: saved.dueDate
+                )
+            } catch TaskClientError.unavailable {
+                try await enqueue(.update(queued), scope: scope)
+                return queued
+            }
         },
         deleteTask: { id in
             @Dependency(\.taskNetworkClient) var network
             let scope = cacheScope()
-            try await mapErrors {
-                try await network.deleteTask(id)
+            let resolved = await resolve(id, scope: scope)
+            guard !resolved.hasPendingChange else {
+                try await enqueue(.delete(id), scope: scope)
+                return
             }
-            await updateCache { cache in try await cache.delete(scope, id) }
+            do {
+                try await mapErrors {
+                    try await network.deleteTask(resolved.id)
+                }
+                await updateCache { cache in try await cache.delete(scope, resolved.id) }
+            } catch TaskClientError.unavailable {
+                try await enqueue(.delete(id), scope: scope)
+            }
+        },
+        pendingSyncCounts: {
+            @Dependency(\.taskCacheClient) var cache
+            return cache.pendingChangeCounts(cacheScope())
         }
     )
 
     /// Rows are tagged with the environment they came from. The scope is read before the network
     /// call, so a response that arrives after a switch (and after `clearCache`) is filed under the
     /// old environment and never shown in the new one.
-    private static func cacheScope() -> String {
+    static func cacheScope() -> String {
         @Dependency(\.environmentClient) var environment
         return environment.current().environment.rawValue
     }
@@ -83,7 +144,7 @@ extension TaskClient {
         }
     }
 
-    private static func logCacheErrors<Value>(
+    static func logCacheErrors<Value>(
         _ operation: String,
         _ body: () async throws -> Value
     ) async throws -> Value {
@@ -98,7 +159,7 @@ extension TaskClient {
         }
     }
 
-    private static func mapErrors<Value>(
+    static func mapErrors<Value>(
         _ operation: () async throws -> Value
     ) async throws -> Value {
         do {

@@ -93,3 +93,69 @@ struct TaskCacheClientTests {
         #expect(try await reopened.tasks("local") == TaskItem.samples)
     }
 }
+
+struct TaskCachePendingChangeTests {
+    private let task = TaskItem(id: UUID(), title: "Offline", priority: .low)
+
+    @Test("""
+        Given a queued create,
+        When the task is updated and then deleted,
+        Then one change remains per task, ending as a local delete
+        """)
+    func changesMergePerTask() async throws {
+        let sut = TaskCacheClient.inMemory()
+        try await sut.enqueue("local", .create(task))
+        var edited = task
+        edited.title = "Edited"
+        try await sut.enqueue("local", .update(edited))
+
+        var pending = try await sut.pendingChanges("local")
+        #expect(pending.count == 1)
+        #expect(pending.first?.kind == .create)
+        #expect(pending.first?.task?.title == "Edited")
+        #expect(pending.first?.revision == 1)
+
+        try await sut.enqueue("local", .delete(task.id))
+        try await sut.enqueue("local", .update(edited))
+        pending = try await sut.pendingChanges("local")
+        #expect(pending.map(\.kind) == [.delete])
+        #expect(pending.first?.isLocal == true)
+        #expect(pending.first?.task == nil)
+    }
+
+    @Test("""
+        Given a queued create sent without edits in between,
+        When the server's task is recorded,
+        Then the change is removed and the local id resolves to the server id
+        """)
+    func settledCreateRecordsAlias() async throws {
+        let sut = TaskCacheClient.inMemory()
+        try await sut.replaceAll("local", [])
+        try await sut.enqueue("local", .create(task))
+        let change = try #require(try await sut.pendingChanges("local").first)
+        let created = TaskItem(id: UUID(), title: "Offline", priority: .low)
+
+        try await sut.settle("local", change, .created(created))
+
+        #expect(try await sut.pendingChanges("local").isEmpty)
+        #expect(try await sut.tasks("local") == [created])
+        let resolved = try await sut.resolve("local", task.id)
+        #expect(resolved == ResolvedTaskID(id: created.id, hasPendingChange: false))
+    }
+
+    @Test("""
+        Given queued changes in two scopes,
+        When the cache is cleared,
+        Then no changes remain in any scope
+        """)
+    func clearRemovesPendingChanges() async throws {
+        let sut = TaskCacheClient.inMemory()
+        try await sut.enqueue("local", .create(task))
+        try await sut.enqueue("dev", .delete(UUID()))
+
+        try await sut.clear()
+
+        #expect(try await sut.pendingChanges("local").isEmpty)
+        #expect(try await sut.pendingChanges("dev").isEmpty)
+    }
+}
