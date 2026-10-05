@@ -27,8 +27,11 @@ Top-level Task Board screen (route `.taskBoard` in `AppCoordinator`). Owner: Tas
 
 ## States
 
-Initial loading → content / empty (with Add) / failed (with Retry). A reload failure with existing
-content keeps the list and shows an inline banner with Retry. Completion is pessimistic per row:
+Initial loading → content / empty (with Add) / failed (with Retry). When nothing is on screen yet,
+a load first shows `taskClient.cachedTasks()` (if any; a cache read error is ignored), then the
+fetched list. A reload failure with existing content keeps the list and shows an inline banner with
+Retry; while the list is still the cached one, the banner says the server can't be reached and the
+saved tasks are shown (`L10n.TaskBoard.offlineError`). Completion is pessimistic per row:
 the toggle is disabled while in flight, the prior value stays on failure with an inline Retry.
 If a successful mutation races a fetch, the stale fetch result is discarded and the board fetches
 again so it cannot revert the confirmed mutation.

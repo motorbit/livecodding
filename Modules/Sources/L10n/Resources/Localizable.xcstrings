@@ -259,6 +259,16 @@
         "en" : { "stringUnit" : { "state" : "translated", "value" : "Couldn't load tasks." } }
       }
     },
+    "taskBoard.error.offline" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Can't reach the server. Showing saved tasks."
+          }
+        }
+      }
+    },
     "taskBoard.error.reload" : {
       "localizations" : {
         "en" : { "stringUnit" : { "state" : "translated", "value" : "Couldn't refresh tasks. Showing the last loaded list." } }
