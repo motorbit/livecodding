@@ -138,4 +138,25 @@ struct MockNetworkClientTests {
             try await sut.createTask(TaskDraftDTO(title: "Once", notes: "", priority: .low), idempotencyKey: key)
         }
     }
+
+    @Test("""
+        Given a seeded task at version 1,
+        When it is updated with If-Match 1, then updated and deleted with that stale version,
+        Then the update bumps the version to 2 and the stale calls throw conflict without changes
+        """)
+    func ifMatchChecksVersion() async throws {
+        let sut = MockNetworkClient(policy: .instant)
+        var task = try #require(try await sut.fetchTasks().first)
+        #expect(task.version == 1)
+        task.title = "Changed"
+
+        let saved = try await sut.updateTask(task, ifMatch: 1)
+
+        #expect(saved.version == 2)
+        await #expect(throws: TaskNetworkError.conflict) { try await sut.updateTask(task, ifMatch: 1) }
+        await #expect(throws: TaskNetworkError.conflict) { try await sut.deleteTask(task.id, ifMatch: 1) }
+        #expect(try await sut.fetchTasks().first == saved)
+        try await sut.deleteTask(task.id, ifMatch: 2)
+        #expect(try await sut.fetchTasks().count == 3)
+    }
 }

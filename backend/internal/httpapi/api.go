@@ -6,6 +6,8 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strconv"
+	"strings"
 
 	"github.com/motorbit/livecodding/backend/internal/store"
 	"github.com/motorbit/livecodding/backend/internal/task"
@@ -143,6 +145,11 @@ func (a *api) updateTask(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, store.ErrNotFound.Error())
 		return
 	}
+	ifVersion, ok := parseIfMatch(r)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "invalid If-Match")
+		return
+	}
 	body, err := task.DecodeTask(http.MaxBytesReader(w, r.Body, MaxBodyBytes))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
@@ -159,9 +166,8 @@ func (a *api) updateTask(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	updated, err := a.store.Update(r.Context(), t)
-	if errors.Is(err, store.ErrNotFound) {
-		writeError(w, http.StatusNotFound, err.Error())
+	updated, err := a.store.Update(r.Context(), t, ifVersion)
+	if a.writeStoreError(w, err) {
 		return
 	}
 	if err != nil {
@@ -177,9 +183,13 @@ func (a *api) deleteTask(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, store.ErrNotFound.Error())
 		return
 	}
-	err = a.store.Delete(r.Context(), id)
-	if errors.Is(err, store.ErrNotFound) {
-		writeError(w, http.StatusNotFound, err.Error())
+	ifVersion, ok := parseIfMatch(r)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "invalid If-Match")
+		return
+	}
+	err = a.store.Delete(r.Context(), id, ifVersion)
+	if a.writeStoreError(w, err) {
 		return
 	}
 	if err != nil {
@@ -188,6 +198,47 @@ func (a *api) deleteTask(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// headerIfMatch makes PUT and DELETE conditional on the task's version: a stale version gets 412.
+const headerIfMatch = "If-Match"
+
+// parseIfMatch reads If-Match as a task version: `3` or `"3"`. A missing header or `*` matches
+// any version. ok is false for anything else.
+func parseIfMatch(r *http.Request) (version int, ok bool) {
+	values, present := r.Header[headerIfMatch]
+	if !present {
+		return store.AnyVersion, true
+	}
+	if len(values) != 1 {
+		return 0, false
+	}
+	v := strings.TrimSpace(values[0])
+	if v == "*" {
+		return store.AnyVersion, true
+	}
+	if len(v) >= 2 && v[0] == '"' && v[len(v)-1] == '"' {
+		v = v[1 : len(v)-1]
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil || n < 1 {
+		return 0, false
+	}
+	return n, true
+}
+
+// writeStoreError writes 404 for ErrNotFound and 412 for ErrVersionMismatch. It reports whether
+// the request is not handled further; other errors are left to the caller.
+func (a *api) writeStoreError(w http.ResponseWriter, err error) bool {
+	switch {
+	case errors.Is(err, store.ErrNotFound):
+		writeError(w, http.StatusNotFound, err.Error())
+	case errors.Is(err, store.ErrVersionMismatch):
+		writeError(w, http.StatusPreconditionFailed, err.Error())
+	default:
+		return false
+	}
+	return true
 }
 
 // internalError logs a store failure (never request data) and returns a generic 500.

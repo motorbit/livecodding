@@ -25,6 +25,9 @@ public struct TaskBoardView: View {
                 if let pending = viewModel.state.pendingSyncMessage {
                     pendingSyncBanner(pending)
                 }
+                if let conflict = viewModel.state.syncConflictMessage {
+                    syncConflictBanner(conflict)
+                }
                 content
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -254,6 +257,20 @@ public struct TaskBoardView: View {
             .frame(maxWidth: .infinity, minHeight: HitTarget.minimum, alignment: .leading)
             .padding(.horizontal, .md)
             .background(Color.dsSurface)
+    }
+
+    private func syncConflictBanner(_ message: String) -> some View {
+        HStack(spacing: .sm) {
+            Label(message, systemImage: "exclamationmark.arrow.triangle.2.circlepath")
+                .font(.dsCaption)
+                .foregroundStyle(Color.dsTextSecondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Button(viewModel.state.syncConflictDismissTitle) { viewModel.trigger(.syncConflictDismissed) }
+                .font(.dsBodyEmphasized)
+                .frame(minWidth: HitTarget.minimum, minHeight: HitTarget.minimum)
+        }
+        .padding(.horizontal, .md)
+        .background(Color.dsSurface)
     }
 
     private func reloadBanner(_ message: String) -> some View {

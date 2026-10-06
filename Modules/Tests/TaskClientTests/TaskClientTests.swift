@@ -78,8 +78,8 @@ struct TaskClientTests {
         try await withDependencies {
             makeDependencies(&$0)
             $0.taskNetworkClient.createTask = { _, _ in throw networkError }
-            $0.taskNetworkClient.updateTask = { _ in throw networkError }
-            $0.taskNetworkClient.deleteTask = { _ in throw networkError }
+            $0.taskNetworkClient.updateTask = { _, _ in throw networkError }
+            $0.taskNetworkClient.deleteTask = { _, _ in throw networkError }
         } operation: {
             let sut = TaskClient.repository
             await #expect(throws: expected) { try await sut.createTask(TaskDraft(title: "T")) }

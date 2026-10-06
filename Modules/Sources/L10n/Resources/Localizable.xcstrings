@@ -376,6 +376,23 @@
         "en" : { "stringUnit" : { "state" : "translated", "value" : "Sort" } }
       }
     },
+    "taskBoard.syncConflict.count %lld" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : { "stringUnit" : { "state" : "translated", "value" : "%lld offline change wasn't applied: the task changed on the server" } },
+              "other" : { "stringUnit" : { "state" : "translated", "value" : "%lld offline changes weren't applied: the tasks changed on the server" } }
+            }
+          }
+        }
+      }
+    },
+    "taskBoard.syncConflict.dismiss" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "OK" } }
+      }
+    },
     "taskBoard.title" : {
       "localizations" : {
         "en" : { "stringUnit" : { "state" : "translated", "value" : "Task Board" } }

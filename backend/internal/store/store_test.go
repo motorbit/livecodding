@@ -82,7 +82,7 @@ func mustList(t *testing.T, s Store) []task.Task {
 func TestStoreContract(t *testing.T) {
 	ctx := context.Background()
 	newTask := func(id, title string) task.Task {
-		return task.Task{ID: id, Title: title, Notes: "", Priority: task.PriorityMedium}
+		return task.Task{ID: id, Title: title, Notes: "", Priority: task.PriorityMedium, Version: 1}
 	}
 	idA, idB, idC := task.NewID(), task.NewID(), task.NewID()
 
@@ -123,7 +123,8 @@ func TestStoreContract(t *testing.T) {
 			}
 			upd := first
 			upd.Done = true
-			if _, err := s.Update(ctx, upd); err != nil {
+			upd.Version = 2
+			if _, err := s.Update(ctx, upd, AnyVersion); err != nil {
 				t.Fatal(err)
 			}
 			again, created, err := s.CreateOnce(ctx, "key-1", newTask(idB, "Second"))
@@ -143,7 +144,7 @@ func TestStoreContract(t *testing.T) {
 			if _, _, err := s.CreateOnce(ctx, "key", newTask(idA, "x")); err != nil {
 				t.Fatal(err)
 			}
-			if err := s.Delete(ctx, idA); err != nil {
+			if err := s.Delete(ctx, idA, AnyVersion); err != nil {
 				t.Fatal(err)
 			}
 			if _, _, err := s.CreateOnce(ctx, "key", newTask(idB, "x")); !errors.Is(err, ErrNotFound) {
@@ -156,7 +157,8 @@ func TestStoreContract(t *testing.T) {
 		{"update replaces in place and keeps position", func(t *testing.T, s Store) {
 			upd := Seeds()[1]
 			upd.Title, upd.Notes, upd.Done, upd.Priority, upd.DueDate = "New", "N", true, task.PriorityHigh, ptr("2026-12-31")
-			if got, err := s.Update(ctx, upd); err != nil || !equalTask(got, upd) {
+			upd.Version = 2
+			if got, err := s.Update(ctx, upd, AnyVersion); err != nil || !equalTask(got, upd) {
 				t.Fatalf("Update = %+v, %v", got, err)
 			}
 			list := mustList(t, s)
@@ -164,38 +166,90 @@ func TestStoreContract(t *testing.T) {
 				t.Fatalf("after update = %+v", list)
 			}
 			upd.DueDate = nil
-			if _, err := s.Update(ctx, upd); err != nil {
+			if _, err := s.Update(ctx, upd, AnyVersion); err != nil {
 				t.Fatal(err)
 			}
 			if got := mustList(t, s)[1]; got.DueDate != nil {
 				t.Fatalf("due date not cleared: %+v", got)
 			}
 		}},
+		{"update increments the version and ignores the given one", func(t *testing.T, s Store) {
+			upd := Seeds()[0]
+			upd.Version = 42
+			got, err := s.Update(ctx, upd, AnyVersion)
+			if err != nil || got.Version != 2 {
+				t.Fatalf("Update = %+v, %v; want version 2", got, err)
+			}
+			if got, err = s.Update(ctx, upd, 2); err != nil || got.Version != 3 {
+				t.Fatalf("Update if 2 = %+v, %v; want version 3", got, err)
+			}
+			if list := mustList(t, s); list[0].Version != 3 {
+				t.Fatalf("stored version = %d, want 3", list[0].Version)
+			}
+		}},
+		{"update with a stale version is rejected and changes nothing", func(t *testing.T, s Store) {
+			first := Seeds()[0]
+			first.Title = "Theirs"
+			if _, err := s.Update(ctx, first, 1); err != nil {
+				t.Fatal(err)
+			}
+			mine := Seeds()[0]
+			mine.Title = "Mine"
+			if _, err := s.Update(ctx, mine, 1); !errors.Is(err, ErrVersionMismatch) {
+				t.Fatalf("err = %v, want ErrVersionMismatch", err)
+			}
+			if got := mustList(t, s)[0]; got.Title != "Theirs" || got.Version != 2 {
+				t.Fatalf("stored = %+v", got)
+			}
+		}},
+		{"delete with a stale version is rejected and keeps the task", func(t *testing.T, s Store) {
+			upd := Seeds()[0]
+			if _, err := s.Update(ctx, upd, AnyVersion); err != nil {
+				t.Fatal(err)
+			}
+			if err := s.Delete(ctx, upd.ID, 1); !errors.Is(err, ErrVersionMismatch) {
+				t.Fatalf("err = %v, want ErrVersionMismatch", err)
+			}
+			if err := s.Delete(ctx, upd.ID, 2); err != nil {
+				t.Fatalf("delete if 2: %v", err)
+			}
+			if got := len(mustList(t, s)); got != len(Seeds())-1 {
+				t.Fatalf("count = %d", got)
+			}
+		}},
+		{"version checks on an unknown id are not found", func(t *testing.T, s Store) {
+			if _, err := s.Update(ctx, newTask(idA, "x"), 1); !errors.Is(err, ErrNotFound) {
+				t.Fatalf("update err = %v, want ErrNotFound", err)
+			}
+			if err := s.Delete(ctx, idA, 1); !errors.Is(err, ErrNotFound) {
+				t.Fatalf("delete err = %v, want ErrNotFound", err)
+			}
+		}},
 		{"update unknown id is not found", func(t *testing.T, s Store) {
-			if _, err := s.Update(ctx, newTask(idA, "x")); !errors.Is(err, ErrNotFound) {
+			if _, err := s.Update(ctx, newTask(idA, "x"), AnyVersion); !errors.Is(err, ErrNotFound) {
 				t.Fatalf("err = %v, want ErrNotFound", err)
 			}
 		}},
 		{"delete removes and keeps order", func(t *testing.T, s Store) {
-			if err := s.Delete(ctx, Seeds()[1].ID); err != nil {
+			if err := s.Delete(ctx, Seeds()[1].ID, AnyVersion); err != nil {
 				t.Fatal(err)
 			}
 			want := []string{Seeds()[0].ID, Seeds()[2].ID, Seeds()[3].ID}
 			if got := ids(mustList(t, s)); !slices.Equal(got, want) {
 				t.Fatalf("ids = %v, want %v", got, want)
 			}
-			if err := s.Delete(ctx, Seeds()[1].ID); !errors.Is(err, ErrNotFound) {
+			if err := s.Delete(ctx, Seeds()[1].ID, AnyVersion); !errors.Is(err, ErrNotFound) {
 				t.Fatalf("second delete err = %v, want ErrNotFound", err)
 			}
 		}},
 		{"delete unknown id is not found", func(t *testing.T, s Store) {
-			if err := s.Delete(ctx, idA); !errors.Is(err, ErrNotFound) {
+			if err := s.Delete(ctx, idA, AnyVersion); !errors.Is(err, ErrNotFound) {
 				t.Fatalf("err = %v, want ErrNotFound", err)
 			}
 		}},
 		{"list of an empty store is an empty slice", func(t *testing.T, s Store) {
 			for _, sd := range Seeds() {
-				if err := s.Delete(ctx, sd.ID); err != nil {
+				if err := s.Delete(ctx, sd.ID, AnyVersion); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -242,7 +296,7 @@ func TestSQLitePersistsAcrossReopen(t *testing.T) {
 	if _, err := s.Create(ctx, created); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.Delete(ctx, Seeds()[0].ID); err != nil {
+	if err := s.Delete(ctx, Seeds()[0].ID, AnyVersion); err != nil {
 		t.Fatal(err)
 	}
 	want := mustList(t, s)
@@ -258,6 +312,39 @@ func TestSQLitePersistsAcrossReopen(t *testing.T) {
 	got := mustList(t, reopened)
 	if !slices.EqualFunc(got, want, equalTask) {
 		t.Fatalf("after reopen = %+v, want %+v (seeds must not be re-inserted)", got, want)
+	}
+}
+
+func TestSQLiteAddsVersionToOldDatabase(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "tasks.db")
+	s, err := OpenSQLite(ctx, path, Seeds())
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Rebuild the table as it was before versioning.
+	for _, stmt := range []string{
+		`CREATE TABLE old AS SELECT seq, id, title, notes, priority, done, due_date FROM tasks`,
+		`DROP TABLE tasks`,
+		`ALTER TABLE old RENAME TO tasks`,
+	} {
+		if _, err := s.db.ExecContext(ctx, stmt); err != nil {
+			t.Fatalf("%s: %v", stmt, err)
+		}
+	}
+	_ = s.Close()
+
+	s, err = OpenSQLite(ctx, path, Seeds())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	list := mustList(t, s)
+	if len(list) != len(Seeds()) || list[0].Version != 1 {
+		t.Fatalf("after migration = %+v", list)
+	}
+	if got, err := s.Update(ctx, list[0], 1); err != nil || got.Version != 2 {
+		t.Fatalf("Update = %+v, %v", got, err)
 	}
 }
 

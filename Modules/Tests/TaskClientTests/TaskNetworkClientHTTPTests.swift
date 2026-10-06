@@ -33,8 +33,8 @@ struct TaskNetworkClientHTTPTests {
 
             #expect(try await sut.fetchTasks() == [dto])
             #expect(try await sut.createTask(TaskDraftDTO(title: "T", notes: "", priority: .high, dueDate: nil), id) == dto)
-            #expect(try await sut.updateTask(dto) == dto)
-            try await sut.deleteTask(id)
+            #expect(try await sut.updateTask(dto, nil) == dto)
+            try await sut.deleteTask(id, nil)
         }
 
         let sent = requests.value.map { "\($0.httpMethod ?? "") \($0.url?.absoluteString ?? "")" }
@@ -51,6 +51,28 @@ struct TaskNetworkClientHTTPTests {
         #expect(requests.value[1].value(forHTTPHeaderField: "Idempotency-Key") == id.uuidString)
         let update = try JSONDecoder().decode(TaskDTO.self, from: requests.value[2].httpBody ?? Data())
         #expect(update == dto)
+        #expect(requests.value.allSatisfy { $0.value(forHTTPHeaderField: "If-Match") == nil })
+    }
+
+    @Test("""
+        Given an update and a delete of an expected version,
+        When the HTTP client sends them and the server answers 412,
+        Then If-Match carries the quoted version and conflict is thrown
+        """)
+    func sendsIfMatchAndMapsConflict() async {
+        let requests = LockIsolated<[URLRequest]>([])
+        let dto = TaskDTO(id: id, title: "T", notes: "", priority: .high, done: false, dueDate: nil)
+        await withDependencies {
+            $0.networkClient.send = { request in
+                requests.withValue { $0.append(request) }
+                return (Data(#"{"error":"version mismatch"}"#.utf8), .stub(412))
+            }
+        } operation: {
+            let sut = TaskNetworkClient.http(baseURL: baseURL)
+            await #expect(throws: TaskNetworkError.conflict) { try await sut.updateTask(dto, 3) }
+            await #expect(throws: TaskNetworkError.conflict) { try await sut.deleteTask(id, 3) }
+        }
+        #expect(requests.value.map { $0.value(forHTTPHeaderField: "If-Match") } == [#""3""#, #""3""#])
     }
 
     @Test("""

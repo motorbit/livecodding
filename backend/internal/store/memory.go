@@ -42,6 +42,7 @@ func (m *Memory) Create(_ context.Context, t task.Task) (task.Task, error) {
 	if m.index(t.ID) >= 0 {
 		return task.Task{}, fmt.Errorf("memory store: duplicate id")
 	}
+	t.Version = 1
 	m.tasks = append(m.tasks, clone(t))
 	return clone(t), nil
 }
@@ -59,31 +60,45 @@ func (m *Memory) CreateOnce(_ context.Context, key string, t task.Task) (task.Ta
 	if m.index(t.ID) >= 0 {
 		return task.Task{}, false, fmt.Errorf("memory store: duplicate id")
 	}
+	t.Version = 1
 	m.tasks = append(m.tasks, clone(t))
 	m.keys[key] = t.ID
 	return clone(t), true, nil
 }
 
-func (m *Memory) Update(_ context.Context, t task.Task) (task.Task, error) {
+func (m *Memory) Update(_ context.Context, t task.Task, ifVersion int) (task.Task, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	i := m.index(t.ID)
-	if i < 0 {
-		return task.Task{}, ErrNotFound
+	i, err := m.match(t.ID, ifVersion)
+	if err != nil {
+		return task.Task{}, err
 	}
+	t.Version = m.tasks[i].Version + 1
 	m.tasks[i] = clone(t)
 	return clone(t), nil
 }
 
-func (m *Memory) Delete(_ context.Context, id string) error {
+func (m *Memory) Delete(_ context.Context, id string, ifVersion int) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	i := m.index(id)
-	if i < 0 {
-		return ErrNotFound
+	i, err := m.match(id, ifVersion)
+	if err != nil {
+		return err
 	}
 	m.tasks = slices.Delete(m.tasks, i, i+1)
 	return nil
+}
+
+// match returns the index of id, checking ifVersion. Callers hold the lock.
+func (m *Memory) match(id string, ifVersion int) (int, error) {
+	i := m.index(id)
+	if i < 0 {
+		return -1, ErrNotFound
+	}
+	if ifVersion != AnyVersion && m.tasks[i].Version != ifVersion {
+		return -1, ErrVersionMismatch
+	}
+	return i, nil
 }
 
 func (m *Memory) Close() error { return nil }

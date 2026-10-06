@@ -21,13 +21,13 @@ private final class Server: Sendable {
                 try self.record("create \(body.title)")
                 return try await self.mock.createTask(body, key)
             },
-            updateTask: { body in
+            updateTask: { body, ifMatch in
                 try self.record("update \(body.title)")
-                return try await self.mock.updateTask(body)
+                return try await self.mock.updateTask(body, ifMatch)
             },
-            deleteTask: { id in
+            deleteTask: { id, ifMatch in
                 try self.record("delete")
-                try await self.mock.deleteTask(id)
+                try await self.mock.deleteTask(id, ifMatch)
             }
         )
     }
@@ -196,7 +196,7 @@ struct TaskClientSyncTests {
             var task = TaskItem.samples[0]
             task.title = "Edited"
             _ = try await sut.updateTask(task)
-            try await server.mock.deleteTask(task.id)
+            try await server.mock.deleteTask(task.id, nil)
             server.isOnline.setValue(true)
 
             let synced = try await sut.fetchTasks()
@@ -274,7 +274,7 @@ struct TaskClientSyncTests {
         let server = Server()
         try await withDependencies {
             makeDependencies(&$0, server: server)
-            $0.taskNetworkClient.updateTask = { _ in throw TaskNetworkError.serverError }
+            $0.taskNetworkClient.updateTask = { _, _ in throw TaskNetworkError.serverError }
         } operation: {
             let sut = TaskClient.repository
             var task = TaskItem.samples[0]
@@ -396,6 +396,178 @@ struct TaskClientSyncTests {
             #expect(synced.contains { $0.title == "Draft" } == false)
             let onServer = try await server.mock.fetchTasks()
             #expect(onServer.last?.title == "Final")
+        }
+    }
+
+    @Test("""
+        Given a fetched task edited offline while it changed on the server,
+        When the queue is sent,
+        Then the server's version wins, the change is dropped and logged, and one conflict is
+        reported until dismissed
+        """)
+    func staleOfflineEditLosesToServer() async throws {
+        let server = Server()
+        let logged = LockIsolated<[String]>([])
+        try await withDependencies {
+            makeDependencies(&$0, server: server)
+            $0.logger.log = { _, _, metadata in
+                logged.withValue { $0.append(metadata["operation"] ?? "") }
+            }
+        } operation: {
+            let sut = TaskClient.repository
+            _ = try await sut.fetchTasks()
+            var conflicts = sut.syncConflictCounts().makeAsyncIterator()
+            #expect(await conflicts.next() == 0)
+            server.isOnline.setValue(false)
+            var mine = TaskItem.samples[0]
+            mine.title = "Mine"
+            _ = try await sut.updateTask(mine)
+            var theirs = TaskDTO(TaskItem.samples[0])
+            theirs.title = "Theirs"
+            _ = try await server.mock.updateTask(theirs, nil)
+            server.isOnline.setValue(true)
+
+            let synced = try await sut.fetchTasks()
+
+            #expect(synced.first?.title == "Theirs")
+            #expect(synced.first?.isPendingSync == false)
+            #expect(server.calls.value == ["fetch", "update Mine", "fetch", "fetch"])
+            #expect(await conflicts.next() == 1)
+            try await sut.dismissSyncConflicts()
+            #expect(await conflicts.next() == 0)
+        }
+        #expect(logged.value == ["taskSync.conflict"])
+    }
+
+    @Test("""
+        Given a fetched task deleted offline while it changed on the server,
+        When the queue is sent,
+        Then the task stays, with the server's values
+        """)
+    func staleOfflineDeleteLosesToServer() async throws {
+        let server = Server()
+        try await withDependencies {
+            makeDependencies(&$0, server: server)
+            $0.logger.log = { _, _, _ in }
+        } operation: {
+            let sut = TaskClient.repository
+            _ = try await sut.fetchTasks()
+            server.isOnline.setValue(false)
+            try await sut.deleteTask(TaskItem.samples[0].id)
+            var theirs = TaskDTO(TaskItem.samples[0])
+            theirs.done = true
+            _ = try await server.mock.updateTask(theirs, nil)
+            server.isOnline.setValue(true)
+
+            let synced = try await sut.fetchTasks()
+
+            #expect(synced.count == 4)
+            #expect(synced.first?.isComplete == true)
+        }
+    }
+
+    @Test("""
+        Given a task edited offline and synced,
+        When it is edited offline again and synced,
+        Then both edits apply: each sync records the version the next change builds on
+        """)
+    func successiveOfflineEditsApply() async throws {
+        let server = Server()
+        try await withDependencies { makeDependencies(&$0, server: server) } operation: {
+            let sut = TaskClient.repository
+            _ = try await sut.fetchTasks()
+            var task = TaskItem.samples[0]
+            for title in ["First", "Second"] {
+                server.isOnline.setValue(false)
+                task.title = title
+                _ = try await sut.updateTask(task)
+                server.isOnline.setValue(true)
+                _ = try await sut.fetchTasks()
+            }
+
+            let onServer = try await server.mock.fetchTasks()
+            #expect(onServer.first?.title == "Second")
+            #expect(onServer.first?.version == 3)
+            var conflicts = sut.syncConflictCounts().makeAsyncIterator()
+            #expect(await conflicts.next() == 0)
+        }
+    }
+
+    @Test("""
+        Given an online edit the server saved but whose answer was lost, so it was queued,
+        When the queue is sent and the server answers 412,
+        Then the server already has the queued values, so it counts as applied, not a conflict
+        """)
+    func lostAnswerOnUpdateIsNotAConflict() async throws {
+        let server = Server()
+        let attempts = LockIsolated(0)
+        try await withDependencies {
+            makeDependencies(&$0, server: server)
+            let network = server.client
+            $0.taskNetworkClient.updateTask = { body, ifMatch in
+                let saved = try await network.updateTask(body, ifMatch)
+                let isFirst = attempts.withValue { $0 += 1; return $0 == 1 }
+                if isFirst { throw TaskNetworkError.transport }
+                return saved
+            }
+        } operation: {
+            let sut = TaskClient.repository
+            _ = try await sut.fetchTasks()
+            var task = TaskItem.samples[0]
+            task.title = "Mine"
+            let queued = try await sut.updateTask(task)
+            #expect(queued.isPendingSync)
+
+            let synced = try await sut.fetchTasks()
+
+            #expect(synced.first?.title == "Mine")
+            #expect(server.calls.value == ["fetch", "update Mine", "update Mine", "fetch", "fetch"])
+            @Dependency(\.taskCacheClient) var cache
+            #expect(try await cache.pendingChanges("local").isEmpty)
+            var conflicts = sut.syncConflictCounts().makeAsyncIterator()
+            #expect(await conflicts.next() == 0)
+        }
+    }
+
+    @Test("""
+        Given a queued update being sent,
+        When the task is edited again before the server answers,
+        Then the edit is sent on top of the version just written, without a conflict
+        """)
+    func editDuringUpdateSendBuildsOnNewVersion() async throws {
+        let server = Server()
+        let cache = TaskCacheClient.inMemory()
+        let attempts = LockIsolated(0)
+        try await withDependencies {
+            makeDependencies(&$0, server: server)
+            $0.taskCacheClient = cache
+            let network = server.client
+            $0.taskNetworkClient.updateTask = { body, ifMatch in
+                let saved = try await network.updateTask(body, ifMatch)
+                let isFirst = attempts.withValue { $0 += 1; return $0 == 1 }
+                if isFirst {
+                    var edited = try saved.toDomain()
+                    edited.title = "Second"
+                    try await cache.enqueue("local", .update(edited))
+                }
+                return saved
+            }
+        } operation: {
+            let sut = TaskClient.repository
+            _ = try await sut.fetchTasks()
+            server.isOnline.setValue(false)
+            var task = TaskItem.samples[0]
+            task.title = "First"
+            _ = try await sut.updateTask(task)
+            server.isOnline.setValue(true)
+
+            let synced = try await sut.fetchTasks()
+
+            #expect(server.calls.value == ["fetch", "update First", "update Second", "fetch"])
+            #expect(synced.first?.title == "Second")
+            #expect(try await server.mock.fetchTasks().first?.version == 3)
+            var conflicts = sut.syncConflictCounts().makeAsyncIterator()
+            #expect(await conflicts.next() == 0)
         }
     }
 }

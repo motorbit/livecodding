@@ -85,7 +85,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Task" }
-              example: { id: 6F1E2D3C-4B5A-4978-8A6B-5C4D3E2F1A0B, title: Pay rent, notes: "", priority: High, done: false, due_date: "2026-10-31" }
+              example: { id: 6F1E2D3C-4B5A-4978-8A6B-5C4D3E2F1A0B, title: Pay rent, notes: "", priority: High, done: false, due_date: "2026-10-31", version: 1 }
         "200":
           description: |
             Replay: the `Idempotency-Key` was used before, so nothing was created. The body is the
@@ -113,6 +113,8 @@ paths:
     put:
       operationId: updateTask
       summary: Replace a task. Body `id` must equal the path `id`.
+      parameters:
+        - $ref: "#/components/parameters/IfMatch"
       requestBody:
         required: true
         description: |
@@ -130,19 +132,29 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Task" }
-              example: { id: 00000000-0000-0000-0000-000000000003, title: Book dentist, notes: "", priority: Low, done: false, due_date: "2026-11-02" }
+              example: { id: 00000000-0000-0000-0000-000000000003, title: Book dentist, notes: "", priority: Low, done: false, due_date: "2026-11-02", version: 2 }
         "400": { $ref: "#/components/responses/BadRequest" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "412": { $ref: "#/components/responses/VersionMismatch" }
         "500": { $ref: "#/components/responses/ServerError" }
     delete:
       operationId: deleteTask
       summary: Delete a task.
+      parameters:
+        - $ref: "#/components/parameters/IfMatch"
       responses:
         "204":
           description: Deleted. Empty body.
           headers:
             X-Request-ID: { $ref: "#/components/headers/RequestID" }
+        "400":
+          description: Invalid `If-Match`.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              example: { error: invalid If-Match }
         "404": { $ref: "#/components/responses/NotFound" }
+        "412": { $ref: "#/components/responses/VersionMismatch" }
         "500": { $ref: "#/components/responses/ServerError" }
 components:
   parameters:
@@ -163,6 +175,16 @@ components:
         sends the task's local id. Same character rules as `X-Request-ID`; an invalid key is 400.
       schema: { type: string, maxLength: 128, pattern: "^[A-Za-z0-9._-]+$" }
       example: 5A0B6C1D-2E3F-4A5B-8C6D-7E8F9A0B1C2D
+    IfMatch:
+      name: If-Match
+      in: header
+      required: false
+      description: |
+        Makes the request conditional on the task's `version`: `3` or `"3"`. A different stored
+        version returns 412 and changes nothing. Missing or `*` means any version (last write
+        wins). The iOS app sends it only when syncing changes queued offline.
+      schema: { type: string }
+      example: '"3"'
     RequestID:
       name: X-Request-ID
       in: header
@@ -196,6 +218,12 @@ components:
         priority: { $ref: "#/components/schemas/Priority" }
         done: { type: boolean }
         due_date: { $ref: "#/components/schemas/DueDate" }
+        version:
+          type: integer
+          minimum: 1
+          description: |
+            Always present in responses: 1 on create, +1 on every update. Ignored in request
+            bodies; send it in `If-Match` instead.
     TaskDraft:
       description: Mirrors iOS `TaskDraftDTO`. Unknown keys (e.g. `id`, `done`) are ignored.
       type: object
@@ -214,8 +242,8 @@ components:
     BadRequest:
       description: |
         Malformed JSON, missing required field, empty title, unknown priority,
-        invalid due_date, body over 1 MiB, (PUT) body id differs from path id, or (POST) an
-        invalid `Idempotency-Key`.
+        invalid due_date, body over 1 MiB, (PUT) body id differs from path id, (POST) an
+        invalid `Idempotency-Key`, or (PUT) an invalid `If-Match`.
       content:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
@@ -226,6 +254,12 @@ components:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
           example: { error: task not found }
+    VersionMismatch:
+      description: "`If-Match` names a version other than the stored one; nothing was changed."
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example: { error: task version mismatch }
     ServerError:
       description: Storage failure, or a simulated failure in chaos mode.
       content:

@@ -30,6 +30,8 @@ func (p Priority) Valid() bool {
 }
 
 // Task mirrors TaskDTO. DueDate is a UTC calendar day ("yyyy-MM-dd"), omitted when nil.
+// Version is set by the store: 1 on create, +1 on every update. Clients send it back in If-Match;
+// a version in a request body is ignored.
 type Task struct {
 	ID       string   `json:"id"`
 	Title    string   `json:"title"`
@@ -37,6 +39,7 @@ type Task struct {
 	Priority Priority `json:"priority"`
 	Done     bool     `json:"done"`
 	DueDate  *string  `json:"due_date,omitempty"`
+	Version  int      `json:"version"`
 }
 
 // Draft mirrors TaskDraftDTO, the POST /tasks body.

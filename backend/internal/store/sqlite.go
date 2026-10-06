@@ -25,7 +25,8 @@ CREATE TABLE IF NOT EXISTS tasks (
 	notes    TEXT    NOT NULL,
 	priority TEXT    NOT NULL,
 	done     INTEGER NOT NULL,
-	due_date TEXT
+	due_date TEXT,
+	version  INTEGER NOT NULL DEFAULT 1
 )`, `
 CREATE TABLE IF NOT EXISTS idempotency_keys (
 	key     TEXT PRIMARY KEY,
@@ -63,6 +64,17 @@ func (s *SQLite) init(ctx context.Context, seeds []task.Task) error {
 			return fmt.Errorf("create schema: %w", err)
 		}
 	}
+	// Databases created before versioning lack the column; existing tasks start at version 1.
+	var hasVersion bool
+	if err := tx.QueryRowContext(ctx,
+		`SELECT COUNT(*) > 0 FROM pragma_table_info('tasks') WHERE name = 'version'`).Scan(&hasVersion); err != nil {
+		return fmt.Errorf("inspect schema: %w", err)
+	}
+	if !hasVersion {
+		if _, err := tx.ExecContext(ctx, `ALTER TABLE tasks ADD COLUMN version INTEGER NOT NULL DEFAULT 1`); err != nil {
+			return fmt.Errorf("add version column: %w", err)
+		}
+	}
 	var n int
 	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM tasks`).Scan(&n); err != nil {
 		return fmt.Errorf("count tasks: %w", err)
@@ -81,20 +93,21 @@ type execer interface {
 	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
 }
 
+// insert stores t with version 1.
 func insert(ctx context.Context, db execer, t task.Task) error {
 	_, err := db.ExecContext(ctx,
-		`INSERT INTO tasks (id, title, notes, priority, done, due_date) VALUES (?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO tasks (id, title, notes, priority, done, due_date, version) VALUES (?, ?, ?, ?, ?, ?, 1)`,
 		t.ID, t.Title, t.Notes, string(t.Priority), t.Done, t.DueDate)
 	return err
 }
 
-const selectTask = `SELECT id, title, notes, priority, done, due_date FROM tasks`
+const selectTask = `SELECT id, title, notes, priority, done, due_date, version FROM tasks`
 
 func scanTask(row interface{ Scan(dest ...any) error }) (task.Task, error) {
 	var t task.Task
 	var priority string
 	var due sql.NullString
-	if err := row.Scan(&t.ID, &t.Title, &t.Notes, &priority, &t.Done, &due); err != nil {
+	if err := row.Scan(&t.ID, &t.Title, &t.Notes, &priority, &t.Done, &due, &t.Version); err != nil {
 		return task.Task{}, err
 	}
 	t.Priority = task.Priority(priority)
@@ -128,6 +141,7 @@ func (s *SQLite) Create(ctx context.Context, t task.Task) (task.Task, error) {
 	if err := insert(ctx, s.db, t); err != nil {
 		return task.Task{}, fmt.Errorf("create task: %w", err)
 	}
+	t.Version = 1
 	return t, nil
 }
 
@@ -162,41 +176,66 @@ func (s *SQLite) CreateOnce(ctx context.Context, key string, t task.Task) (task.
 	if err := tx.Commit(); err != nil {
 		return task.Task{}, false, fmt.Errorf("commit create: %w", err)
 	}
+	t.Version = 1
 	return t, true, nil
 }
 
-func (s *SQLite) Update(ctx context.Context, t task.Task) (task.Task, error) {
-	res, err := s.db.ExecContext(ctx,
-		`UPDATE tasks SET title = ?, notes = ?, priority = ?, done = ?, due_date = ? WHERE id = ?`,
-		t.Title, t.Notes, string(t.Priority), t.Done, t.DueDate, t.ID)
+func (s *SQLite) Update(ctx context.Context, t task.Task, ifVersion int) (task.Task, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
+		return task.Task{}, fmt.Errorf("begin update: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	current, err := matchVersion(ctx, tx, t.ID, ifVersion)
+	if err != nil {
+		return task.Task{}, err
+	}
+	t.Version = current + 1
+	if _, err := tx.ExecContext(ctx,
+		`UPDATE tasks SET title = ?, notes = ?, priority = ?, done = ?, due_date = ?, version = ? WHERE id = ?`,
+		t.Title, t.Notes, string(t.Priority), t.Done, t.DueDate, t.Version, t.ID); err != nil {
 		return task.Task{}, fmt.Errorf("update task: %w", err)
 	}
-	if err := requireOneRow(res); err != nil {
-		return task.Task{}, err
+	if err := tx.Commit(); err != nil {
+		return task.Task{}, fmt.Errorf("commit update: %w", err)
 	}
 	return t, nil
 }
 
-func (s *SQLite) Delete(ctx context.Context, id string) error {
-	res, err := s.db.ExecContext(ctx, `DELETE FROM tasks WHERE id = ?`, id)
+func (s *SQLite) Delete(ctx context.Context, id string, ifVersion int) error {
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
+		return fmt.Errorf("begin delete: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := matchVersion(ctx, tx, id, ifVersion); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM tasks WHERE id = ?`, id); err != nil {
 		return fmt.Errorf("delete task: %w", err)
 	}
-	return requireOneRow(res)
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit delete: %w", err)
+	}
+	return nil
 }
 
 func (s *SQLite) Close() error { return s.db.Close() }
 
-func requireOneRow(res sql.Result) error {
-	n, err := res.RowsAffected()
+// matchVersion returns the stored version of id, checking ifVersion.
+func matchVersion(ctx context.Context, tx *sql.Tx, id string, ifVersion int) (int, error) {
+	var current int
+	err := tx.QueryRowContext(ctx, `SELECT version FROM tasks WHERE id = ?`, id).Scan(&current)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, ErrNotFound
+	}
 	if err != nil {
-		return fmt.Errorf("rows affected: %w", err)
+		return 0, fmt.Errorf("read version: %w", err)
 	}
-	if n == 0 {
-		return ErrNotFound
+	if ifVersion != AnyVersion && current != ifVersion {
+		return 0, ErrVersionMismatch
 	}
-	return nil
+	return current, nil
 }
 
 var (

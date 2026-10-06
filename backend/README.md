@@ -106,14 +106,19 @@ Every flag falls back to an environment variable. Flags win over env.
 |---|---|---|
 | `GET /tasks` | `200`, array in insertion order | 500 |
 | `POST /tasks` | `201` + `Location: /tasks/{id}`; server assigns `id`, `done=false`. With `Idempotency-Key`, a repeated key returns `200` and the task it created | 400, 404 (key's task deleted), 500 |
-| `PUT /tasks/{id}` | `200` with the stored task (full replace) | 400, 404, 500 |
-| `DELETE /tasks/{id}` | `204`, empty body | 404, 500 |
+| `PUT /tasks/{id}` | `200` with the stored task (full replace, `version` + 1). Optional `If-Match: <version>` | 400, 404, 412 (version changed), 500 |
+| `DELETE /tasks/{id}` | `204`, empty body. Optional `If-Match: <version>` | 400 (bad `If-Match`), 404, 412, 500 |
 | `GET /healthz` | `200 {"status":"ok"}` (never affected by chaos) | — |
 
 Validation (same as the mock): `title` is trimmed of whitespace and newlines and must not be empty
 (the trimmed title is stored). `priority` must be `Low|Medium|High`. `due_date` must be a real
 `yyyy-MM-dd` date. `notes` may be empty. Malformed JSON, missing required fields, a body over 1 MiB
 or a `PUT` whose body `id` differs from the path `id` → `400`. A path id that isn't a UUID → `404`.
+
+Versions: every task carries `version` (1 on create, +1 on each update; a `version` in a request
+body is ignored). `If-Match: 3` or `If-Match: "3"` makes `PUT`/`DELETE` apply only to that version,
+otherwise `412`; without the header (or with `*`) the last write wins. SQLite databases created
+before versioning get the column on start, with existing tasks at version 1.
 
 Errors are `{"error":"<short message>"}` and never echo input. Every response is
 `application/json`. Unknown routes return JSON `404`, and wrong methods return JSON `405` with `Allow`.
