@@ -13,7 +13,7 @@ struct TaskNetworkClientHTTPTests {
     @Test("""
         Given the HTTP client,
         When each Task API call is made,
-        Then it sends the matching method, path and JSON body
+        Then it sends the matching method, path, JSON body and the create's idempotency key
         """)
     func buildsRequests() async throws {
         let requests = LockIsolated<[URLRequest]>([])
@@ -32,7 +32,7 @@ struct TaskNetworkClientHTTPTests {
             let sut = TaskNetworkClient.http(baseURL: baseURL)
 
             #expect(try await sut.fetchTasks() == [dto])
-            #expect(try await sut.createTask(TaskDraftDTO(title: "T", notes: "", priority: .high, dueDate: nil)) == dto)
+            #expect(try await sut.createTask(TaskDraftDTO(title: "T", notes: "", priority: .high, dueDate: nil), id) == dto)
             #expect(try await sut.updateTask(dto) == dto)
             try await sut.deleteTask(id)
         }
@@ -48,6 +48,7 @@ struct TaskNetworkClientHTTPTests {
         #expect(create?["title"] as? String == "T")
         #expect(create?["priority"] as? String == "High")
         #expect(requests.value[1].value(forHTTPHeaderField: "Content-Type") == "application/json")
+        #expect(requests.value[1].value(forHTTPHeaderField: "Idempotency-Key") == id.uuidString)
         let update = try JSONDecoder().decode(TaskDTO.self, from: requests.value[2].httpBody ?? Data())
         #expect(update == dto)
     }
@@ -150,7 +151,7 @@ struct TaskNetworkClientEnvironmentTests {
         } operation: {
             let sut = TaskNetworkClient.environmentBacked(mock: .mock(policy: .instant))
 
-            let created = try await sut.createTask(TaskDraftDTO(title: "New", notes: "", priority: .low, dueDate: nil))
+            let created = try await sut.createTask(TaskDraftDTO(title: "New", notes: "", priority: .low, dueDate: nil), UUID())
 
             #expect(try await sut.fetchTasks().last == created)
         }

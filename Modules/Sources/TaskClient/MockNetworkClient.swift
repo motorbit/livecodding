@@ -25,10 +25,12 @@ struct MockNetworkPolicy: Sendable {
 }
 
 /// In-memory stand-in for the Task backend. Behaves like a remote API: async, delayed, can fail,
-/// owns IDs, validates input and trims titles.
+/// owns IDs, validates input, trims titles and honours idempotency keys on create.
 actor MockNetworkClient {
     private let policy: MockNetworkPolicy
     private var tasks: [TaskDTO]
+    /// Idempotency key → id of the task it created.
+    private var createdByKey: [UUID: UUID] = [:]
 
     init(policy: MockNetworkPolicy, seeds: [TaskDTO] = MockNetworkClient.seedTasks()) {
         self.policy = policy
@@ -40,8 +42,12 @@ actor MockNetworkClient {
         return tasks
     }
 
-    func createTask(_ body: TaskDraftDTO) async throws -> TaskDTO {
+    func createTask(_ body: TaskDraftDTO, idempotencyKey: UUID) async throws -> TaskDTO {
         try await simulate(policy.writeDelay())
+        if let id = createdByKey[idempotencyKey] {
+            guard let task = tasks.first(where: { $0.id == id }) else { throw TaskNetworkError.notFound }
+            return task
+        }
         let task = TaskDTO(
             id: UUID(),
             title: try validatedTitle(body.title),
@@ -51,6 +57,7 @@ actor MockNetworkClient {
             dueDate: body.dueDate
         )
         tasks.append(task)
+        createdByKey[idempotencyKey] = task.id
         return task
     }
 
@@ -123,7 +130,7 @@ extension TaskNetworkClient {
         let network = MockNetworkClient(policy: policy)
         return Self(
             fetchTasks: { try await network.fetchTasks() },
-            createTask: { try await network.createTask($0) },
+            createTask: { try await network.createTask($0, idempotencyKey: $1) },
             updateTask: { try await network.updateTask($0) },
             deleteTask: { try await network.deleteTask($0) }
         )

@@ -66,6 +66,7 @@ paths:
       summary: Create a task. The server assigns `id` and sets `done` to false.
       parameters:
         - $ref: "#/components/parameters/RequestID"
+        - $ref: "#/components/parameters/IdempotencyKey"
       requestBody:
         required: true
         description: At most 1 MiB. `title` is trimmed of whitespace and newlines and must not be empty.
@@ -85,7 +86,25 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Task" }
               example: { id: 6F1E2D3C-4B5A-4978-8A6B-5C4D3E2F1A0B, title: Pay rent, notes: "", priority: High, done: false, due_date: "2026-10-31" }
+        "200":
+          description: |
+            Replay: the `Idempotency-Key` was used before, so nothing was created. The body is the
+            task that key created, as it is now (the request body is ignored).
+          headers:
+            Location:
+              description: Path of the task the key created.
+              schema: { type: string }
+            X-Request-ID: { $ref: "#/components/headers/RequestID" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Task" }
         "400": { $ref: "#/components/responses/BadRequest" }
+        "404":
+          description: Replay of an `Idempotency-Key` whose task has been deleted since.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              example: { error: task not found }
         "500": { $ref: "#/components/responses/ServerError" }
   /tasks/{id}:
     parameters:
@@ -134,6 +153,16 @@ components:
       description: Task UUID, any letter case. A value that is not a UUID returns 404.
       schema: { type: string, format: uuid }
       example: 00000000-0000-0000-0000-000000000001
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: |
+        Makes the create safe to retry. The first request with a key creates the task; later
+        ones return it (200) instead of creating another. Keys are kept forever. The iOS app
+        sends the task's local id. Same character rules as `X-Request-ID`; an invalid key is 400.
+      schema: { type: string, maxLength: 128, pattern: "^[A-Za-z0-9._-]+$" }
+      example: 5A0B6C1D-2E3F-4A5B-8C6D-7E8F9A0B1C2D
     RequestID:
       name: X-Request-ID
       in: header
@@ -185,7 +214,8 @@ components:
     BadRequest:
       description: |
         Malformed JSON, missing required field, empty title, unknown priority,
-        invalid due_date, body over 1 MiB, or (PUT) body id differs from path id.
+        invalid due_date, body over 1 MiB, (PUT) body id differs from path id, or (POST) an
+        invalid `Idempotency-Key`.
       content:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }

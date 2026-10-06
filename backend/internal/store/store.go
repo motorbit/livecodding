@@ -21,6 +21,10 @@ type Store interface {
 	List(ctx context.Context) ([]task.Task, error)
 	// Create appends t, which must carry a new id.
 	Create(ctx context.Context, t task.Task) (task.Task, error)
+	// CreateOnce is Create keyed by an idempotency key. The first call with a key appends t and
+	// returns created == true. Later calls with the same key append nothing and return the task
+	// the key created, as it is now, or ErrNotFound if it has been deleted since.
+	CreateOnce(ctx context.Context, key string, t task.Task) (stored task.Task, created bool, err error)
 	// Update replaces the task with t.ID in place, keeping its position.
 	Update(ctx context.Context, t task.Task) (task.Task, error)
 	// Delete removes the task with the given id.

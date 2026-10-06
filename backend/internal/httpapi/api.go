@@ -101,14 +101,41 @@ func (a *api) createTask(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	created, err := a.store.Create(r.Context(), t)
+	key, hasKey := r.Header[headerIdempotencyKey]
+	if !hasKey {
+		created, err := a.store.Create(r.Context(), t)
+		if err != nil {
+			a.internalError(w, r, err)
+			return
+		}
+		w.Header().Set("Location", "/tasks/"+created.ID)
+		writeJSON(w, http.StatusCreated, created)
+		return
+	}
+	if len(key) != 1 || !validRequestID(key[0]) {
+		writeError(w, http.StatusBadRequest, "invalid Idempotency-Key")
+		return
+	}
+	stored, created, err := a.store.CreateOnce(r.Context(), key[0], t)
+	if errors.Is(err, store.ErrNotFound) {
+		writeError(w, http.StatusNotFound, err.Error())
+		return
+	}
 	if err != nil {
 		a.internalError(w, r, err)
 		return
 	}
-	w.Header().Set("Location", "/tasks/"+created.ID)
-	writeJSON(w, http.StatusCreated, created)
+	w.Header().Set("Location", "/tasks/"+stored.ID)
+	status := http.StatusCreated
+	if !created {
+		status = http.StatusOK
+	}
+	writeJSON(w, status, stored)
 }
+
+// headerIdempotencyKey makes POST /tasks safe to retry: a repeated key returns the task the
+// first request created instead of creating another.
+const headerIdempotencyKey = "Idempotency-Key"
 
 func (a *api) updateTask(w http.ResponseWriter, r *http.Request) {
 	id, err := task.ParseID(r.PathValue("id"))

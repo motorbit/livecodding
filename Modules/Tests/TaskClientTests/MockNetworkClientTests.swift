@@ -34,7 +34,7 @@ struct MockNetworkClientTests {
         ))
 
         let seed = try await sut.fetchTasks()
-        let created = try await sut.createTask(TaskDraftDTO(title: "New", notes: "", priority: .low))
+        let created = try await sut.createTask(TaskDraftDTO(title: "New", notes: "", priority: .low), idempotencyKey: UUID())
         _ = try await sut.updateTask(seed[0])
         try await sut.deleteTask(created.id)
 
@@ -53,7 +53,8 @@ struct MockNetworkClientTests {
         let seed = try await sut.fetchTasks()
 
         let created = try await sut.createTask(
-            TaskDraftDTO(title: "  New task  ", notes: "Notes", priority: .high, dueDate: "2026-10-01")
+            TaskDraftDTO(title: "  New task  ", notes: "Notes", priority: .high, dueDate: "2026-10-01"),
+            idempotencyKey: UUID()
         )
         #expect(created.title == "New task")
         #expect(created.done == false)
@@ -80,7 +81,7 @@ struct MockNetworkClientTests {
         let sut = MockNetworkClient(policy: .instant)
 
         await #expect(throws: TaskNetworkError.badRequest) {
-            try await sut.createTask(TaskDraftDTO(title: " \n\t ", notes: "", priority: .low))
+            try await sut.createTask(TaskDraftDTO(title: " \n\t ", notes: "", priority: .low), idempotencyKey: UUID())
         }
         await #expect(throws: TaskNetworkError.notFound) {
             try await sut.updateTask(TaskDTO(id: UUID(), title: "Missing", notes: "", priority: .low, done: false))
@@ -107,7 +108,7 @@ struct MockNetworkClientTests {
 
         await #expect(throws: TaskNetworkError.serverError) { try await sut.fetchTasks() }
         await #expect(throws: TaskNetworkError.serverError) {
-            try await sut.createTask(TaskDraftDTO(title: "New", notes: "", priority: .low))
+            try await sut.createTask(TaskDraftDTO(title: "New", notes: "", priority: .low), idempotencyKey: UUID())
         }
         await #expect(throws: TaskNetworkError.serverError) {
             try await sut.updateTask(TaskDTO(id: seedID, title: "Changed", notes: "", priority: .low, done: true))
@@ -116,5 +117,25 @@ struct MockNetworkClientTests {
 
         failing.setValue(false)
         #expect(try await sut.fetchTasks() == MockNetworkClient.seedTasks())
+    }
+
+    @Test("""
+        Given a task created with an idempotency key,
+        When the same key is sent again,
+        Then the first task is returned and nothing new is created, or notFound once it is deleted
+        """)
+    func repeatedIdempotencyKeyReturnsFirstTask() async throws {
+        let sut = MockNetworkClient(policy: .instant)
+        let key = UUID()
+
+        let first = try await sut.createTask(TaskDraftDTO(title: "Once", notes: "", priority: .low), idempotencyKey: key)
+        let again = try await sut.createTask(TaskDraftDTO(title: "Twice", notes: "", priority: .low), idempotencyKey: key)
+
+        #expect(again == first)
+        #expect(try await sut.fetchTasks().count == 5)
+        try await sut.deleteTask(first.id)
+        await #expect(throws: TaskNetworkError.notFound) {
+            try await sut.createTask(TaskDraftDTO(title: "Once", notes: "", priority: .low), idempotencyKey: key)
+        }
     }
 }
