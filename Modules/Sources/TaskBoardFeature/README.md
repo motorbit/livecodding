@@ -47,7 +47,8 @@ reloads when the path goes from offline to online. Every load syncs first (insid
 
 A detail opened on a task created offline keeps its temporary id. If a reload replaces it with the
 server's id meanwhile, detail's `.updated`/`.deleted` no longer match a row; `TaskClient` has
-already applied the change under the server's id, so the board reloads instead.
+already applied the change under the server's id, so the board reloads instead. That reload reads
+the cache first, so the change shows even when the fetch fails offline.
 
 ## Search and sort
 
