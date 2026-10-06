@@ -116,6 +116,43 @@ func TestStoreContract(t *testing.T) {
 				t.Fatal("Create duplicate: want error")
 			}
 		}},
+		{"create once with a repeated key returns the first task", func(t *testing.T, s Store) {
+			first, created, err := s.CreateOnce(ctx, "key-1", newTask(idA, "First"))
+			if err != nil || !created || !equalTask(first, newTask(idA, "First")) {
+				t.Fatalf("CreateOnce = %+v, %v, %v", first, created, err)
+			}
+			upd := first
+			upd.Done = true
+			if _, err := s.Update(ctx, upd); err != nil {
+				t.Fatal(err)
+			}
+			again, created, err := s.CreateOnce(ctx, "key-1", newTask(idB, "Second"))
+			if err != nil || created || !equalTask(again, upd) {
+				t.Fatalf("replay = %+v, %v, %v; want the current first task", again, created, err)
+			}
+			other, created, err := s.CreateOnce(ctx, "key-2", newTask(idC, "Other"))
+			if err != nil || !created || other.ID != idC {
+				t.Fatalf("other key = %+v, %v, %v", other, created, err)
+			}
+			want := append(ids(Seeds()), idA, idC)
+			if got := ids(mustList(t, s)); !slices.Equal(got, want) {
+				t.Fatalf("ids = %v, want %v", got, want)
+			}
+		}},
+		{"create once with the key of a deleted task is not found", func(t *testing.T, s Store) {
+			if _, _, err := s.CreateOnce(ctx, "key", newTask(idA, "x")); err != nil {
+				t.Fatal(err)
+			}
+			if err := s.Delete(ctx, idA); err != nil {
+				t.Fatal(err)
+			}
+			if _, _, err := s.CreateOnce(ctx, "key", newTask(idB, "x")); !errors.Is(err, ErrNotFound) {
+				t.Fatalf("err = %v, want ErrNotFound", err)
+			}
+			if got := len(mustList(t, s)); got != len(Seeds()) {
+				t.Fatalf("count = %d, want %d", got, len(Seeds()))
+			}
+		}},
 		{"update replaces in place and keeps position", func(t *testing.T, s Store) {
 			upd := Seeds()[1]
 			upd.Title, upd.Notes, upd.Done, upd.Priority, upd.DueDate = "New", "N", true, task.PriorityHigh, ptr("2026-12-31")

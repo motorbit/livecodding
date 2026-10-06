@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"net/url"
 
@@ -16,7 +17,7 @@ type SQLite struct {
 	db *sql.DB
 }
 
-const schema = `
+var schema = []string{`
 CREATE TABLE IF NOT EXISTS tasks (
 	seq      INTEGER PRIMARY KEY AUTOINCREMENT,
 	id       TEXT    NOT NULL UNIQUE,
@@ -25,7 +26,12 @@ CREATE TABLE IF NOT EXISTS tasks (
 	priority TEXT    NOT NULL,
 	done     INTEGER NOT NULL,
 	due_date TEXT
-)`
+)`, `
+CREATE TABLE IF NOT EXISTS idempotency_keys (
+	key     TEXT PRIMARY KEY,
+	task_id TEXT NOT NULL
+)`,
+}
 
 // OpenSQLite opens (or creates) the database at path, creates the schema and inserts seeds when
 // the tasks table is empty.
@@ -52,8 +58,10 @@ func (s *SQLite) init(ctx context.Context, seeds []task.Task) error {
 		return fmt.Errorf("begin init: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	if _, err := tx.ExecContext(ctx, schema); err != nil {
-		return fmt.Errorf("create schema: %w", err)
+	for _, stmt := range schema {
+		if _, err := tx.ExecContext(ctx, stmt); err != nil {
+			return fmt.Errorf("create schema: %w", err)
+		}
 	}
 	var n int
 	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM tasks`).Scan(&n); err != nil {
@@ -80,24 +88,33 @@ func insert(ctx context.Context, db execer, t task.Task) error {
 	return err
 }
 
+const selectTask = `SELECT id, title, notes, priority, done, due_date FROM tasks`
+
+func scanTask(row interface{ Scan(dest ...any) error }) (task.Task, error) {
+	var t task.Task
+	var priority string
+	var due sql.NullString
+	if err := row.Scan(&t.ID, &t.Title, &t.Notes, &priority, &t.Done, &due); err != nil {
+		return task.Task{}, err
+	}
+	t.Priority = task.Priority(priority)
+	if due.Valid {
+		t.DueDate = &due.String
+	}
+	return t, nil
+}
+
 func (s *SQLite) List(ctx context.Context) ([]task.Task, error) {
-	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, title, notes, priority, done, due_date FROM tasks ORDER BY seq`)
+	rows, err := s.db.QueryContext(ctx, selectTask+` ORDER BY seq`)
 	if err != nil {
 		return nil, fmt.Errorf("list tasks: %w", err)
 	}
 	defer rows.Close()
 	out := []task.Task{}
 	for rows.Next() {
-		var t task.Task
-		var priority string
-		var due sql.NullString
-		if err := rows.Scan(&t.ID, &t.Title, &t.Notes, &priority, &t.Done, &due); err != nil {
+		t, err := scanTask(rows)
+		if err != nil {
 			return nil, fmt.Errorf("scan task: %w", err)
-		}
-		t.Priority = task.Priority(priority)
-		if due.Valid {
-			t.DueDate = &due.String
 		}
 		out = append(out, t)
 	}
@@ -112,6 +129,40 @@ func (s *SQLite) Create(ctx context.Context, t task.Task) (task.Task, error) {
 		return task.Task{}, fmt.Errorf("create task: %w", err)
 	}
 	return t, nil
+}
+
+func (s *SQLite) CreateOnce(ctx context.Context, key string, t task.Task) (task.Task, bool, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return task.Task{}, false, fmt.Errorf("begin create: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	var id string
+	err = tx.QueryRowContext(ctx, `SELECT task_id FROM idempotency_keys WHERE key = ?`, key).Scan(&id)
+	switch {
+	case err == nil:
+		stored, err := scanTask(tx.QueryRowContext(ctx, selectTask+` WHERE id = ?`, id))
+		if errors.Is(err, sql.ErrNoRows) {
+			return task.Task{}, false, ErrNotFound
+		}
+		if err != nil {
+			return task.Task{}, false, fmt.Errorf("read keyed task: %w", err)
+		}
+		return stored, false, nil
+	case !errors.Is(err, sql.ErrNoRows):
+		return task.Task{}, false, fmt.Errorf("read idempotency key: %w", err)
+	}
+	if err := insert(ctx, tx, t); err != nil {
+		return task.Task{}, false, fmt.Errorf("create task: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx,
+		`INSERT INTO idempotency_keys (key, task_id) VALUES (?, ?)`, key, t.ID); err != nil {
+		return task.Task{}, false, fmt.Errorf("store idempotency key: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return task.Task{}, false, fmt.Errorf("commit create: %w", err)
+	}
+	return t, true, nil
 }
 
 func (s *SQLite) Update(ctx context.Context, t task.Task) (task.Task, error) {

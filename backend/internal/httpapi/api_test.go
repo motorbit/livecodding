@@ -132,6 +132,45 @@ func TestCreateTaskIgnoresClientIDAndDone(t *testing.T) {
 	}
 }
 
+func TestCreateTaskIdempotencyKey(t *testing.T) {
+	first := true
+	newID := func() string {
+		if first {
+			first = false
+			return fixedID
+		}
+		return task.NewID()
+	}
+	h := NewHandler(Config{Store: store.NewMemory(store.Seeds()), NewID: newID})
+	post := func(key, body string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPost, "/tasks", strings.NewReader(body))
+		req.Header.Set("Idempotency-Key", key)
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		return rec
+	}
+	const key = "5A0B6C1D-2E3F-4A5B-8C6D-7E8F9A0B1C2D"
+
+	wantStatus(t, post(key, `{"title":"Once","notes":"","priority":"Low"}`), http.StatusCreated)
+	replay := post(key, `{"title":"Once","notes":"","priority":"Low"}`)
+	wantStatus(t, replay, http.StatusOK)
+	if got := decode[task.Task](t, replay); got.ID != fixedID || got.Title != "Once" {
+		t.Fatalf("replay = %+v", got)
+	}
+	if loc := replay.Header().Get("Location"); loc != "/tasks/"+fixedID {
+		t.Errorf("Location = %q", loc)
+	}
+	if list := decode[[]task.Task](t, do(t, h, http.MethodGet, "/tasks", "")); len(list) != 5 {
+		t.Fatalf("count = %d, want 5", len(list))
+	}
+
+	wantStatus(t, do(t, h, http.MethodDelete, "/tasks/"+fixedID, ""), http.StatusNoContent)
+	wantError(t, post(key, `{"title":"Once","notes":"","priority":"Low"}`), http.StatusNotFound)
+
+	wantError(t, post("bad key!", `{"title":"T","notes":"","priority":"Low"}`), http.StatusBadRequest)
+	wantError(t, post(key, `{"title":" ","notes":"","priority":"Low"}`), http.StatusBadRequest)
+}
+
 func TestCreateTaskValidation(t *testing.T) {
 	cases := map[string]string{
 		"empty title":           `{"title":"","notes":"","priority":"Low"}`,
@@ -279,6 +318,9 @@ func (failingStore) Create(context.Context, task.Task) (task.Task, error) {
 }
 func (failingStore) Update(context.Context, task.Task) (task.Task, error) {
 	return task.Task{}, errBoom
+}
+func (failingStore) CreateOnce(context.Context, string, task.Task) (task.Task, bool, error) {
+	return task.Task{}, false, errBoom
 }
 func (failingStore) Delete(context.Context, string) error { return errBoom }
 func (failingStore) Close() error                         { return nil }

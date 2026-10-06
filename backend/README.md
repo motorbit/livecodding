@@ -105,7 +105,7 @@ Every flag falls back to an environment variable. Flags win over env.
 | Method + path | Success | Errors |
 |---|---|---|
 | `GET /tasks` | `200`, array in insertion order | 500 |
-| `POST /tasks` | `201` + `Location: /tasks/{id}`; server assigns `id`, `done=false` | 400, 500 |
+| `POST /tasks` | `201` + `Location: /tasks/{id}`; server assigns `id`, `done=false`. With `Idempotency-Key`, a repeated key returns `200` and the task it created | 400, 404 (key's task deleted), 500 |
 | `PUT /tasks/{id}` | `200` with the stored task (full replace) | 400, 404, 500 |
 | `DELETE /tasks/{id}` | `204`, empty body | 404, 500 |
 | `GET /healthz` | `200 {"status":"ok"}` (never affected by chaos) | — |

@@ -13,11 +13,13 @@ import (
 type Memory struct {
 	mu    sync.RWMutex
 	tasks []task.Task
+	// keys maps an idempotency key to the id of the task it created.
+	keys map[string]string
 }
 
 // NewMemory returns a Memory store holding a copy of seeds.
 func NewMemory(seeds []task.Task) *Memory {
-	m := &Memory{tasks: make([]task.Task, 0, len(seeds))}
+	m := &Memory{tasks: make([]task.Task, 0, len(seeds)), keys: map[string]string{}}
 	for _, t := range seeds {
 		m.tasks = append(m.tasks, clone(t))
 	}
@@ -42,6 +44,24 @@ func (m *Memory) Create(_ context.Context, t task.Task) (task.Task, error) {
 	}
 	m.tasks = append(m.tasks, clone(t))
 	return clone(t), nil
+}
+
+func (m *Memory) CreateOnce(_ context.Context, key string, t task.Task) (task.Task, bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if id, ok := m.keys[key]; ok {
+		i := m.index(id)
+		if i < 0 {
+			return task.Task{}, false, ErrNotFound
+		}
+		return clone(m.tasks[i]), false, nil
+	}
+	if m.index(t.ID) >= 0 {
+		return task.Task{}, false, fmt.Errorf("memory store: duplicate id")
+	}
+	m.tasks = append(m.tasks, clone(t))
+	m.keys[key] = t.ID
+	return clone(t), true, nil
 }
 
 func (m *Memory) Update(_ context.Context, t task.Task) (task.Task, error) {
