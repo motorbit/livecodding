@@ -7,7 +7,7 @@ Top-level Task Board screen (route `.taskBoard` in `AppCoordinator`). Owner: Tas
 - Coordinator: `withDependencies(from: self) { TaskBoardViewModel() }` → `TaskBoardView(viewModel:)`.
   The host has **no output events**; all navigation below the list is host-scoped.
 - Data: `@Dependency(\.taskClient)` — `fetchTasks()` on first appear / Retry / pull-to-refresh,
-  `updateTask(_:)` for pessimistic completion toggles, `deleteTask(id:)` for swipe-to-delete.
+  `updateTask(_:)` for optimistic completion toggles, `deleteTask(id:)` for swipe-to-delete.
   `\.continuousClock` drives the undo window (tests inject `TestClock`); `\.date`, `\.calendar`,
   `\.locale` drive due-date text.
 
@@ -31,8 +31,8 @@ Initial loading → content / empty (with Add) / failed (with Retry). When nothi
 a load first shows `taskClient.cachedTasks()` (if any; a cache read error is ignored), then the
 fetched list. A reload failure with existing content keeps the list and shows an inline banner with
 Retry; while the list is still the cached one, the banner says the server can't be reached and the
-saved tasks are shown (`L10n.TaskBoard.offlineError`). Completion is pessimistic per row:
-the toggle is disabled while in flight, the prior value stays on failure with an inline Retry.
+saved tasks are shown (`L10n.TaskBoard.offlineError`). Completion is optimistic per row: the
+toggle applies at once, and a failure rolls back to the confirmed value with an inline Retry.
 If a successful mutation races a fetch, the stale fetch result is discarded and the board fetches
 again so it cannot revert the confirmed mutation.
 
@@ -77,8 +77,16 @@ past days show "Overdue by N days" (error color) for incomplete tasks and "Due y
 
 ## Swipe to delete with undo
 
-The list is a plain `List`; a trailing swipe sends `.deleteSwiped(id)`. This is the one deliberate
-exception to pessimistic updates (SPEC R2):
+The list is a plain `List`; a trailing swipe sends `.deleteSwiped(id)`. Completion toggles and swipe-delete are
+optimistic (SPEC R2):
+
+- **Completion:** the row shows the new value at once, with no spinner. If the request fails, the
+  row goes back to the server's last confirmed value with `completionError` and Retry. Toggles made
+  while a request is in flight only change the row. When that request answers, the latest value is
+  sent if it differs, so requests for one row never race. A reload keeps the value of a row whose
+  request is in flight. Detail can't be opened until the request answers (see Gotchas).
+
+Swipe-delete:
 
 - The row hides immediately and an undo banner appears for `undoWindow` (4 s).
   VoiceOver announces the banner message when it appears.
@@ -99,7 +107,8 @@ state. It's the only async VM entry point (ADR 0003 exception).
 
 ## Gotchas
 
-- A row with a request in flight can't open detail (detail would save a stale snapshot); a
+- A row with any request in flight (completion or delete) can't open detail: both requests send the
+  whole task, so a detail save could race them and overwrite or revert each other's fields. A
   successful row delete pops detail if it shows that task.
 
 - Strings come from `L10n.TaskBoard` (discard confirmation reuses `L10n.TaskDetail`).

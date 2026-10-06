@@ -61,7 +61,7 @@ TaskBoardFeature ─┬─ AddTaskFeature
 
 - ✅ 1. Task list — scrollable `List`, title, priority indicator, completion toggle
 - ✅ 2. Add task — title (required, trimmed and validated), optional notes, priority
-- ✅ 3. Complete & delete — pessimistic toggle with row Retry; delete from detail and by swipe
+- ✅ 3. Complete & delete — optimistic toggle with rollback and row Retry; delete from detail and by swipe
 - ✅ 4. Detail / edit screen
 - ✅ 5. Own mock network layer — `MockNetworkClient` actor behind a DTO client and a repository
 - ✅ 6. Loading, empty and error states (+ reload banner keeping content, no-results state)
@@ -83,7 +83,7 @@ TaskBoardFeature ─┬─ AddTaskFeature
 
 **Quality**
 
-- ✅ 180 Swift Testing tests; deterministic clock, latency and failure injection (no `Task.sleep`)
+- ✅ 186 Swift Testing tests; deterministic clock, latency and failure injection (no `Task.sleep`)
 - ✅ Async-race protection (stored tasks, generation counters, restart of stale loads)
 - ✅ Two code reviews against the brief; findings fixed in PR #22
 
@@ -110,6 +110,8 @@ Ideas that follow from the brief's "treat it like the start of a real product":
 - ✅ **Persistence / caching** — implemented: an on-disk SQLite cache (GRDB) behind `TaskClient`,
   cleared on every environment switch. The board shows cached tasks first, refreshes from the network, and keeps
   the cached list with a "Showing saved tasks" banner when the server can't be reached.
+- ✅ **Optimistic completion**: the checkmark toggles at once and rolls back with an inline error if the
+  save fails.
 - ✅ **Offline changes and sync**: when the server can't be reached, create/edit/complete/delete still
   work. Changes are queued in SQLite and sent before the next load (Retry, pull-to-refresh, or automatically
   when the network comes back). Unsynced rows show a badge, and a banner says "N changes waiting to sync".
@@ -118,7 +120,6 @@ Ideas that follow from the brief's "treat it like the start of a real product":
   change the server refuses is dropped too.
 - **Live updates** — expose changes as an `AsyncStream` (the brief's alternative API shape) so
   several screens stay in sync without manual list patching.
-- **Optimistic completion** — toggle immediately with rollback on failure, like swipe-delete.
 - **More filters** — completed/incomplete, overdue, due this week.
 - **UI tests and snapshot tests** for states (loading, empty, error, long titles, Dynamic Type, dark mode).
 - **CI** — GitHub Actions running package tests and the app build on every PR.
