@@ -18,6 +18,7 @@ A small SwiftUI **Task Board** built for an AI-assisted live-coding challenge. T
 - Thin app shell + local SPM package `Modules/`, one module per feature/client.
 - Event-driven MVVM, root `AppCoordinator`, DI with [swift-dependencies](https://github.com/pointfreeco/swift-dependencies), Swift Testing.
 - Rules and module map: [`AGENTS.md`](AGENTS.md) · spec: [`docs/SPEC.md`](docs/SPEC.md) · plan: [`docs/PLAN.md`](docs/PLAN.md) · decisions: [`docs/decisions/`](docs/decisions/).
+- Architecture overview (layers, data flow, trade-offs, evolution): [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ```
 TaskBoardFeature ─┬─ AddTaskFeature

@@ -12,6 +12,7 @@ Rules for AI agents and developers working in this repository. The **HARD RULES*
   - event-driven MVVM;
   - DI with swift-dependencies;
   - Swift Testing.
+  - Overview of layers, data flow and trade-offs: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 - **Dependencies:** `swift-dependencies` (dependency injection); `GRDB` (SQLite, the task cache and offline change queue in `TaskClient`); NetworkClient provides typed HTTP transport, JSON decoding and endpoint construction; `TaskClient` talks to a DTO-level `TaskNetworkClient` that picks the backend per call from `AppEnvironment` (`local` = in-app `MockNetworkClient`, `dev`/`prod` = HTTP, e.g. the Go server in `backend/`).
 
 ## Module map
