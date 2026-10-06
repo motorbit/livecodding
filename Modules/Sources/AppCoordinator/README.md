@@ -24,7 +24,7 @@ Keep this table in sync when adding a route (**ios-coordinator-route**).
 
 | Overlay | State | Opened by | Outputs handled |
 |---|---|---|---|
-| Debug Menu button + sheet | `debugMenuButton: DebugMenuButtonState?` (`nil` when `selectableEnvironments()` is empty, i.e. prod release), `debugMenu: DebugMenuViewModel?` | the button calls `openDebugMenu()` | `.closeRequested` → close; `.environmentChangeRequested` → `switchEnvironment(to:)` |
+| Debug Menu button + sheet | `debugMenuButton: DebugMenuButtonState?` (`nil` when `selectableEnvironments()` is empty, i.e. prod release), `debugMenu: DebugMenuViewModel?` | the button calls `openDebugMenu()` | `.closeRequested` → close; sheet swiped away → `debugMenuDismissed()` (close); `.environmentChangeRequested` → `switchEnvironment(to:)` |
 
 `switchEnvironment(to:)` is the ordered reset: `setOverride` → drop the overlay and the screen (VMs cancel their tasks in `deinit`) → clear environment-bound state (`taskClient.clearCache()` in a stored `cacheResetTask`) → `navigate(to: .bootstrap)`. Navigation doesn't wait for the clear: cache rows are tagged with their environment, so the new screens never read old tasks.
 

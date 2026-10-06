@@ -5,7 +5,7 @@ import SwiftUI
 /// Everything else lives in the `Modules` package (ADR 0001).
 @main
 struct LivecoddingApp: App {
-    // Uncomment only if the app must receive UIApplicationDelegate callbacks (see AppDelegate.swift).
+    // Uncomment only if the app must receive UIApplicationDelegate callbacks; add a forwarding AppDelegate here if needed.
     // @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     @StateObject private var coordinator = AppCoordinator()

@@ -1,10 +1,10 @@
-# AGENTS.md — <App> iOS
+# AGENTS.md — livecodding (Task Board) iOS
 
 Rules for AI agents and developers working in this repository. The **HARD RULES** are non-negotiable. The rest is guidance. Rationale lives in [`docs/decisions/`](docs/decisions/README.md).
 
 ## Overview
 
-- **App:** `Livecodding`: starter iOS app; product purpose and target users are not yet specified.
+- **App:** `livecodding`: **Task Board**, a small personal task list (add, edit, complete, delete, search/sort, due dates) for an individual, built for an AI-assisted live-coding challenge; talks to an in-app mock or the Go backend in `backend/`, with an offline cache and sync queue.
 - **Platform:** iOS 17+, Swift 6.2 (Swift 6 language mode), SwiftUI, Combine. Keep every app/module deployment target at iOS 17.0; newer APIs require availability checks or compatible alternatives.
 - **Architecture:**
   - thin app shell + local SPM package `Modules/` (one module per feature/client);
@@ -31,8 +31,6 @@ Rules for AI agents and developers working in this repository. The **HARD RULES*
 | `TaskClient` | client | Task repository (`TaskClient`) over the internal `TaskNetworkClient` boundary (live = per-call backend from `AppEnvironment`: `MockNetworkClient` or HTTP) and the internal GRDB `TaskCacheClient` (on-disk cache + offline change queue synced before each fetch, cleared on environment switch) |
 | `AppEnvironment` | client | `EnvironmentClient`: local/dev/prod configs from `BuildValues+Generated.swift` (CI: `scripts/generate-build-values.sh`), debug override |
 
-<!-- Delete rows for modules the project doesn't have. Add every new module here. -->
-
 ## HARD RULES
 
 Rule ids (`R1`…) are cited by the `ios-reviewer` agent.
@@ -49,7 +47,7 @@ Rule ids (`R1`…) are cited by the `ios-reviewer` agent.
    - `init(state:)` with a default at most. No work or dependency reads in `init` (ADR 0003).
 8. **R8 Effects.** Async results come back as `InternalAction` → `handle(_:)`. Tasks are stored and cancelled before a restart and in `deinit`, guarded by a generation counter and `Task.isCancelled` after every `await`. No `Bool` re-entrancy flags (ADR 0005).
 9. **R9 DI.**
-   - `@DependencyClient` structs live in client modules, never in UI modules. One client module may group related clients (e.g. `Storage`: Keychain + UserDefaults + SwiftData; `NetworkClient`: REST + GraphQL).
+   - `@DependencyClient` structs live in client modules, never in UI modules. One client module may group related clients (e.g. `TaskClient`: repository + GRDB cache; `NetworkClient`: REST + GraphQL).
    - `testValue = Self()` (unimplemented). No no-op test values.
    - Consumers use `@Dependency` at class level; non-published dependency and task properties need no observation wrapper.
    - No UseCase layer without a second real consumer (ADR 0004).
@@ -68,7 +66,7 @@ Rule ids (`R1`…) are cited by the `ios-reviewer` agent.
     - No `Task.sleep`: await stored tasks, gate with `AsyncStream`, use `ImmediateClock`.
     - Changed behaviour ships with tests.
 15. **R15 Shared modules.** A shared module (`Utils`, `CommonUI`, `TestSupport`, …) is fine once code is used by **≥2 modules**. It never imports features. **Exception:** `DesignSystem` always exists, even with a single feature. Don't copy helpers from other projects without reviewing them; each must justify itself here.
-16. **R16 Project file.** Agents never edit `*.pbxproj`. Give the user manual Xcode steps instead. **Exception:** the bootstrap skill's `wire_xcode_project.py` (adds `Modules/`, links `AppCoordinator`, sets build settings, creates `<App>.xctestplan` + the shared scheme).
+16. **R16 Project file.** Agents never edit `*.pbxproj`. Give the user manual Xcode steps instead. **Exception:** the bootstrap skill's `wire_xcode_project.py` (adds `Modules/`, links `AppCoordinator`, sets build settings, creates `livecodding.xctestplan` + the shared scheme).
 17. **R17 Secrets.** No secrets in source, xcconfig, Info.plist or generated files.
 
 ## Open decisions (don't invent a pattern)
@@ -95,16 +93,17 @@ Rule ids (`R1`…) are cited by the `ios-reviewer` agent.
 ## Build and test
 
 ```bash
-# From <Root>/Modules. Agents: don't run these unless the user asks. The user builds in Xcode.
+# From Modules/. Agents: don't run these unless the user asks. The user builds in Xcode.
+# <Simulator>: any installed iOS 17+ simulator, e.g. iPhone 16.
 xcodebuild test -scheme Modules-Package -destination 'platform=iOS Simulator,name=<Simulator>'
 xcodebuild test -scheme Modules-Package -destination '…' -only-testing:<Module>Tests
-# App (from <Root>)
-xcodebuild build -project <App>.xcodeproj -scheme <App> -destination '…'
+# App (from the repo root)
+xcodebuild build -project livecodding.xcodeproj -scheme livecodding -destination '…'
 # After adding a module with tests: register its test target in the app's test plan (idempotent)
-python3 .github/skills/ios-project-bootstrap/scripts/sync_test_plan.py <App>.xctestplan
+python3 .github/skills/ios-project-bootstrap/scripts/sync_test_plan.py livecodding.xctestplan
+# Go backend for the dev environment (:8080; see backend/README.md for make test/lint/run-chaos)
+cd backend && make run
 ```
-
-<!-- Add lint/format commands (SwiftLint, swift-format) and the CI workflow name if they exist. -->
 
 ## Workflow preferences
 

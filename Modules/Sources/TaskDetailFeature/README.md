@@ -16,4 +16,5 @@ Task text is never logged.
 A "Due date" toggle reveals a date-only `DatePicker` shown in `DueDay.timeZone` (UTC), so the
 state holds the canonical 00:00 UTC day with no time-zone conversion. Turning it on defaults to the
 local today (`DueDay.day(containing: \.date.now, in: \.calendar)`); turning it off clears the date.
-Turning it back on restores the saved date, else the local today. Dirty checking and the saved\n`TaskItem` include `dueDate`.
+Turning it back on restores the saved date, else the local today. Dirty checking and the saved
+`TaskItem` include `dueDate`.

@@ -14,11 +14,11 @@ in-memory `MockNetworkClient` (`Modules/Sources/TaskClient`), so the app can swi
 
 | iOS (`TaskDTO.swift`) | JSON | Go (`internal/task`) |
 |---|---|---|
-| `TaskDTO` | `{"id","title","notes","priority","done","due_date"?}` | `task.Task` |
+| `TaskDTO` | `{"id","title","notes","priority","done","due_date"?,"version"}` (`version`: int, always sent; optional on iOS) | `task.Task` |
 | `TaskDraftDTO` (POST body) | `{"title","notes","priority","due_date"?}` | `task.Draft` |
 | `PriorityDTO` | `"Low"` \| `"Medium"` \| `"High"` | `task.Priority` |
 | `DueDateFormat` | `"yyyy-MM-dd"`, UTC calendar day | `task.DueDateLayout` |
-| `TaskNetworkError.badRequest / .notFound / .serverError` | 400 / 404 / 5xx | handler status codes |
+| `TaskNetworkError.badRequest / .notFound / .conflict / .serverError` | 400 / 404 / 412 (`If-Match` version mismatch) / 5xx | handler status codes |
 
 - `due_date` is omitted when absent. Requests may omit it or send `null`.
 - IDs are UUIDs, accepted in any letter case and emitted upper-case (like Swift's `uuidString`).
@@ -143,7 +143,7 @@ curl $B/healthz
 # {"status":"ok"}
 
 curl $B/tasks
-# [{"id":"00000000-0000-0000-0000-000000000001","title":"Renew domain registration","notes":"Expires end of month","priority":"High","done":false}, …4 tasks]
+# [{"id":"00000000-0000-0000-0000-000000000001","title":"Renew domain registration","notes":"Expires end of month","priority":"High","done":false,"version":1}, …4 tasks]
 
 # Create. The title is trimmed, and the server assigns id and done=false. Keep the id for later.
 ID=$(curl -s -X POST $B/tasks -H 'Content-Type: application/json' \
@@ -151,17 +151,17 @@ ID=$(curl -s -X POST $B/tasks -H 'Content-Type: application/json' \
   | sed -E 's/.*"id":"([^"]+)".*/\1/'); echo $ID
 curl -i -X POST $B/tasks -H 'Content-Type: application/json' -d '{"title":"Water plants","notes":"","priority":"Low"}'
 # HTTP/1.1 201 Created, Location: /tasks/<ID>
-# {"id":"<ID>","title":"Water plants","notes":"","priority":"Low","done":false}
+# {"id":"<ID>","title":"Water plants","notes":"","priority":"Low","done":false,"version":1}
 
 # Update (full replace): mark done, change the due date. Path ids are case-insensitive.
 curl -X PUT $B/tasks/$ID -H 'Content-Type: application/json' \
   -d '{"id":"'$ID'","title":"Pay rent","notes":"paid","priority":"High","done":true,"due_date":"2026-11-30"}'
-# {"id":"<ID>","title":"Pay rent","notes":"paid","priority":"High","done":true,"due_date":"2026-11-30"}
+# {"id":"<ID>","title":"Pay rent","notes":"paid","priority":"High","done":true,"due_date":"2026-11-30","version":2}
 
 # Clear a due date with null (or by omitting it).
 curl -X PUT $B/tasks/$S3 -H 'Content-Type: application/json' \
   -d '{"id":"'$S3'","title":"Book dentist","notes":"","priority":"Low","done":false,"due_date":null}'
-# {"id":"00000000-0000-0000-0000-000000000003","title":"Book dentist","notes":"","priority":"Low","done":false}
+# {"id":"00000000-0000-0000-0000-000000000003","title":"Book dentist","notes":"","priority":"Low","done":false,"version":2}
 
 curl -i -X DELETE $B/tasks/$S2
 # HTTP/1.1 204 No Content
@@ -266,6 +266,9 @@ Implemented in the app's `AppEnvironment` + `TaskClient` modules:
 3. **ATS:** `Config/Debug-Info.plist` adds `NSAllowsLocalNetworking`, wired for the Debug
    configuration only, so Release builds keep full ATS.
 4. **Client:** `TaskNetworkClient+HTTP.swift` maps the endpoints with `Endpoint` and decodes through
-   `NetworkClient` (off the main actor, logged by its logging middleware). 400 → `.badRequest`,
-   404 → `.notFound`, other statuses → `.serverError`, no response → `.transport`.
+   `NetworkClient` (off the main actor, logged by its logging middleware). `POST` sends
+   `Idempotency-Key: <UUID>` (the task's local id); `PUT` and `DELETE` send `If-Match: "<version>"`
+   when the app knows the task's version. 400 → `.badRequest`, 404 → `.notFound`, 412 → `.conflict`,
+   other statuses → `.serverError`; no response, an undecodable body or an invalid request →
+   `.transport`; cancellation stays a `CancellationError`.
 5. Not done yet: sending `X-Request-ID` from the app so client and server logs correlate.

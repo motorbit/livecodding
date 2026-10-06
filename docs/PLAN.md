@@ -1,5 +1,7 @@
 # Task Board — Implementation plan (from docs/SPEC.md, 2026-09-30)
 
+> **Note:** this is a dated plan. [Phase 3](#phase-3--backend-environments-and-offline-sync-2026-10-06) superseded parts of Phases 1–2: the module table below (no `AppEnvironment`, `DebugMenuFeature`, GRDB or HTTP backend), `liveValue = .mock(policy: .live)` as "the single swap point" (the live value now picks mock or HTTP per call from `AppEnvironment`), and "`NetworkClient` unused" / "`TaskClient` does not depend on `NetworkClient`" (`TaskClient`'s HTTP backend uses it). The current module map is in [`AGENTS.md`](../AGENTS.md).
+
 ## Modules
 
 | Module | Kind | Depends on | Skill | Options |
@@ -131,7 +133,7 @@ Source: the review of the project against the challenge brief, plus spec revisio
 ### 1. ✅ Cleanup — `chore: remove unused HomeFeature`
 - Delete `Sources/HomeFeature`, `Tests/HomeFeatureTests`, the `.homeFeature` case and its `uiModule(...)` block in `Package.swift`.
 - Delete the empty `Tests/AddTaskFeatureTests/AddTaskFeatureTests.swift`.
-- `python3 .github/skills/ios-project-bootstrap/scripts/sync_test_plan.py Livecodding.xctestplan --prune`.
+- `python3 .github/skills/ios-project-bootstrap/scripts/sync_test_plan.py livecodding.xctestplan --prune`.
 - Gate: package builds.
 
 ### 2. ✅ Model + DTOs — `feat(TaskClient): add due date and DTO mapping`
@@ -184,3 +186,68 @@ Source: the review of the project against the challenge brief, plus spec revisio
 - `List` + `.swipeActions` changes row layout and hit-testing: re-check the 44-pt completion button inside the row (`.buttonStyle(.plain)` prevents whole-row taps).
 - The deferred swipe delete is optimistic by design (SPEC R2). The detail delete stays pessimistic.
 - Walk-through talking points: why a DTO-level mock network client (one swap point: `TaskNetworkClient.liveValue`; the repository maps DTOs/errors) and why iOS 17 (satisfies 16+).
+
+---
+
+# Phase 3 — Backend, environments and offline sync (2026-10-06)
+
+Source: the README's "Possible improvements" and spec revisions R7–R10. Built after the challenge; each item landed through its own PR (#27–#35). Done.
+
+## Modules
+
+| Module | Change |
+|---|---|
+| `backend/` (Go, not in the package) | New REST service (`GET/POST /tasks`, `PUT/DELETE /tasks/{id}`), contract in `backend/openapi.yaml` |
+| `AppEnvironment` | New client module: `EnvironmentClient` (`local`/`dev`/`prod`), `BuildValues+Generated.swift`, debug override in `UserDefaults` |
+| `DebugMenuFeature` | New UI module: environment picker sheet behind a floating 🐞 button; depends on `AppEnvironment` |
+| `AppCoordinator` | Adds `DebugMenuFeature`, `AppEnvironment`, `TaskClient`; overlay + ordered reset `switchEnvironment(to:)` |
+| `TaskClient` | Adds `AppEnvironment`, `NetworkClient` and `GRDB`; HTTP `TaskNetworkClient`, `TaskCacheClient`, offline queue and sync |
+| `NetworkClient` | Now used by `TaskClient`; adds `NetworkMonitorClient` (`NWPathMonitor`) |
+| `TaskBoardFeature` | Adds `NetworkClient` (path monitor); cached-first load, sync badge/banners, backoff, optimistic completion |
+
+## Steps
+
+### 1. ✅ Go backend — PR #27, `feat(backend): add HTTP API …`
+- Task model and validation, memory and SQLite stores, request ID / access log / recover / chaos middleware, `--seed=filled|empty`.
+- `openapi.yaml`, Makefile (`make run`, `run-chaos`, `run-sqlite`, `test`, `lint`), distroless Dockerfile, Colima start script.
+- Tests: handlers, store contract, chaos, logging, seeds (drift check against the iOS `seed-tasks.json`), OpenAPI routes.
+
+### 2. ✅ Environments + Debug Menu — PR #28, `feat(AppEnvironment)…`, `feat(DebugMenu)…` (SPEC R7)
+- `AppEnvironment`: `local` (in-app mock), `dev` (`http://localhost:8080`), `prod` (`.notConfigured` until a URL exists). Values from a committed `BuildValues+Generated.swift` regenerated on CI by `scripts/generate-build-values.sh`; no xcconfig.
+- `DebugMenuFeature`: floating button + sheet in debug/non-prod builds; the coordinator runs the ordered reset (override → drop screen → clear environment-bound state → `.bootstrap`).
+- `Config/Debug-Info.plist` adds `NSAllowsLocalNetworking` for Debug only.
+
+### 3. ✅ HTTP `TaskNetworkClient` — PR #28, `feat(TaskClient): HTTP backend selected per call by environment`
+- `liveValue = .environmentBacked(mock: .mock(policy: .live))` reads `\.environmentClient.current().apiBackend` on every call: `.mock` → shared `MockNetworkClient`, `.remote(url)` → `.http(baseURL:)` over `NetworkClient`, `.notConfigured` → `apiBaseURLMissing`.
+- Status mapping 400/404/5xx → `.badRequest`/`.notFound`/`.serverError`; no response or undecodable body → `.transport`.
+
+### 4. ✅ GRDB cache with stale-while-revalidate — PR #29 (SPEC R8)
+- Internal `TaskCacheClient` (SQLite in Caches, rows scoped by environment); `TaskClient` writes every successful call through; new `cachedTasks` and `clearCache`.
+- `TaskBoardFeature` shows cached tasks first, then the fetch; on failure keeps them with "Can't reach the server. Showing saved tasks." and Retry.
+- `AppCoordinator.switchEnvironment` clears the cache.
+
+### 5. ✅ Offline sync queue with pending indicator — PR #30 (SPEC R9)
+- `.unavailable` create/update/delete → `pendingChange` row (one per task, merged) and success with `isPendingSync`; `fetchTasks` sends the queue first; `taskAlias` maps temporary ids to server ids.
+- `NetworkMonitorClient` triggers a reload when the path comes back.
+- UI: per-row "Not synced yet" badge and "N changes waiting to sync" banner (GRDB observation).
+
+### 6. ✅ Idempotent create — PR #31
+- Backend: `Idempotency-Key` on `POST /tasks`; a repeated key returns the task it created (`200`).
+- App: the key is the task's local id, reused when the create is queued, so a lost answer or retried sync never duplicates a task.
+- Fix (PR #32): the board reloads (cache first) when detail reports an id the list has already replaced.
+
+### 7. ✅ Retry backoff — PR #33, `feat(TaskBoard): retry sync with backoff while changes wait`
+- While changes wait and the device isn't known offline, reload after 5 s, doubling to 5 min (injected clock); reset when the queue empties or the path comes back.
+
+### 8. ✅ Version conflicts — PR #34, `feat: version conflicts for queued changes (server wins)`
+- Backend: `version` on every task (1 on create, +1 per update); `If-Match` on `PUT`/`DELETE`, `412` on mismatch.
+- App: `taskVersion` records the last seen version; queued updates/deletes keep `baseVersion` and send `If-Match`. `412` → `.conflict` → change dropped, logged and counted in `syncConflict`; a lost-answer update the server already has counts as applied.
+- UI: "N offline changes weren't applied" banner with OK.
+
+### 9. ✅ Optimistic completion — PR #35, `feat(TaskBoard): optimistic completion` (SPEC R10)
+- The toggle applies at once; failure rolls back to the confirmed value with inline error and Retry; toggles during a request coalesce into one follow-up.
+
+## Risks / notes
+- Switching environments discards unsynced changes along with the cache.
+- Conflicts are server-wins only for queued changes; online edits and changes without a known version are last write wins.
+- `prod` has no base URL yet; calls fail with `apiBaseURLMissing` and show the usual load error.

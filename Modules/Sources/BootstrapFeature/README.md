@@ -14,7 +14,7 @@ The app's first screen. It shows a progress indicator while start-up work runs, 
 ## Owner and wiring
 
 - Created by: `AppCoordinator.makeScreen(.bootstrap)`. `.bootstrap` is the default initial route.
-- Output handled by: `AppCoordinator.handle(_: BootstrapViewModelEvent)`. `.finished` navigates to `.home`.
+- Output handled by: `AppCoordinator.handle(_: BootstrapViewModelEvent)`. `.finished` navigates to `.taskBoard`.
 - Dependencies: `Logging`, `DesignSystem`, `L10n`.
 
 ## Adding a start-up step
