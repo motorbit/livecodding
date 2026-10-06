@@ -21,6 +21,11 @@ public final class TaskBoardViewModel: ObservableObject {
 
     static let undoWindow: Duration = .seconds(4)
 
+    /// Wait before the next sync retry: 5 s, doubling per attempt, at most 5 min.
+    static func syncRetryDelay(attempt: Int) -> Duration {
+        .seconds(min(5 * (1 << min(attempt, 6)), 300))
+    }
+
     var loadTask: Task<Void, Never>?
     /// One in-flight completion or delete request per row.
     var rowTasks: [UUID: Task<Void, Never>] = [:]
@@ -29,7 +34,14 @@ public final class TaskBoardViewModel: ObservableObject {
     var pendingSyncTask: Task<Void, Never>?
     /// Reloads (which syncs first) when the device gets a network path back.
     var connectivityTask: Task<Void, Never>?
+    /// Waits out the backoff, then reloads, while changes are waiting to sync.
+    var syncRetryTask: Task<Void, Never>?
+    private var syncRetryGeneration = 0
+    private var syncRetryAttempt = 0
+    private var pendingSyncCount = 0
     private var loadGeneration = 0
+    /// The last load whose result was handled; differs from `loadGeneration` while one is running.
+    private var handledLoadGeneration = 0
     private var rowGeneration = 0
     private var undoGeneration = 0
     private var mutationGeneration = 0
@@ -70,6 +82,7 @@ public final class TaskBoardViewModel: ObservableObject {
         undoTask?.cancel()
         pendingSyncTask?.cancel()
         connectivityTask?.cancel()
+        syncRetryTask?.cancel()
         rowTasks.values.forEach { $0.cancel() }
     }
 
@@ -167,6 +180,7 @@ public final class TaskBoardViewModel: ObservableObject {
         case deletionFailed(UUID)
         case pendingSyncCountChanged(Int)
         case connectivityChanged(isOnline: Bool)
+        case syncRetryDue
     }
 
     private func handle(_ action: InternalAction) {
@@ -175,9 +189,13 @@ public final class TaskBoardViewModel: ObservableObject {
             isShowingCachedTasks = true
             apply(items)
         case .loaded(let items):
+            handledLoadGeneration = loadGeneration
             isShowingCachedTasks = false
             apply(items)
+            scheduleSyncRetry()
         case .loadFailed:
+            handledLoadGeneration = loadGeneration
+            scheduleSyncRetry()
             switch state.phase {
             case .content, .empty:
                 state.reloadErrorMessage = isShowingCachedTasks
@@ -219,12 +237,60 @@ public final class TaskBoardViewModel: ObservableObject {
             }
             rebuildRows()
         case .pendingSyncCountChanged(let count):
+            pendingSyncCount = count
             state.pendingSyncMessage = count > 0 ? L10n.TaskBoard.pendingSyncCount(count, locale: locale) : nil
+            if count == 0 {
+                cancelSyncRetry()
+                syncRetryAttempt = 0
+            } else {
+                scheduleSyncRetry()
+            }
         case .connectivityChanged(let isOnline):
             let wasOffline = self.isOnline == false
             self.isOnline = isOnline
-            if wasOffline, isOnline { load() }
+            if isOnline {
+                if wasOffline {
+                    syncRetryAttempt = 0
+                    load()
+                }
+            } else {
+                // Nothing to retry without a path; getting it back reloads.
+                cancelSyncRetry()
+            }
+        case .syncRetryDue:
+            syncRetryTask = nil
+            // A load started since then syncs too, and reschedules when it finishes.
+            guard handledLoadGeneration == loadGeneration else { return }
+            load(isBackground: true)
         }
+    }
+
+    /// Retries the sync (a reload) with backoff while changes are waiting. Keeps a retry that is
+    /// already scheduled. Skipped while the device is offline (reconnecting reloads anyway) and
+    /// while a load is running (its result schedules the next retry).
+    private func scheduleSyncRetry() {
+        guard pendingSyncCount > 0, isOnline != false, syncRetryTask == nil,
+              handledLoadGeneration == loadGeneration else { return }
+        syncRetryGeneration += 1
+        let generation = syncRetryGeneration
+        let delay = Self.syncRetryDelay(attempt: syncRetryAttempt)
+        syncRetryAttempt += 1
+        let clock = clock
+        syncRetryTask = Task { [weak self] in
+            do {
+                try await clock.sleep(for: delay)
+            } catch {
+                return
+            }
+            guard !Task.isCancelled, let self, self.syncRetryGeneration == generation else { return }
+            self.handle(.syncRetryDue)
+        }
+    }
+
+    private func cancelSyncRetry() {
+        syncRetryTask?.cancel()
+        syncRetryTask = nil
+        syncRetryGeneration += 1
     }
 
     private func observeSyncState() {
@@ -260,8 +326,9 @@ public final class TaskBoardViewModel: ObservableObject {
     /// Stale-while-revalidate: when nothing is on screen yet, cached tasks are shown first, then
     /// replaced by the fetched list. If the fetch fails, the cached list stays with an offline
     /// banner. `readsCache` reads the cache whatever is on screen, so a change the cache has under
-    /// another id shows even if the fetch fails.
-    private func load(readsCache: Bool = false) {
+    /// another id shows even if the fetch fails. A background load (sync retry) keeps the phase and
+    /// the reload banner until its result arrives.
+    private func load(readsCache: Bool = false, isBackground: Bool = false) {
         loadTask?.cancel()
         loadGeneration += 1
         let generation = loadGeneration
@@ -270,12 +337,12 @@ public final class TaskBoardViewModel: ObservableObject {
         let showsCache: Bool
         switch state.phase {
         case .loading, .failed:
-            state.phase = .loading
-            showsCache = true
+            if !isBackground { state.phase = .loading }
+            showsCache = !isBackground
         case .content, .empty:
             showsCache = false
         }
-        state.reloadErrorMessage = nil
+        if !isBackground { state.reloadErrorMessage = nil }
 
         loadTask = Task { [weak self] in
             if showsCache || readsCache, let cached = try? await client.cachedTasks(),

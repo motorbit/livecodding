@@ -1131,6 +1131,7 @@ struct TaskBoardSwipeDeleteTests {
         let sut = withDependencies {
             makeDependencies(&$0)
             $0.continuousClock = clock
+            $0.locale = Locale(identifier: "en_US")
             $0.taskClient.updateTask = { item in
                 for await _ in gate { break }
                 return item
@@ -1477,6 +1478,7 @@ struct TaskBoardReviewFixTests {
         let sut = withDependencies {
             makeDependencies(&$0)
             $0.continuousClock = clock
+            $0.locale = Locale(identifier: "en_US")
             $0.taskClient.deleteTask = { _ in
                 let attempt = attempts.withValue { $0 += 1; return $0 }
                 if attempt == 1 { throw TestError() }
@@ -1564,6 +1566,7 @@ struct TaskBoardSyncTests {
         let sut = withDependencies {
             makeDependencies(&$0)
             $0.locale = locale
+            $0.continuousClock = TestClock()
             $0.taskClient.pendingSyncCounts = { counts }
         } operation: { TaskBoardViewModel() }
 
@@ -1615,5 +1618,336 @@ struct TaskBoardSyncTests {
 
         #expect(fetches.value == 2)
         #expect(sut.state.phase == .content)
+    }
+
+    @Test("""
+        Given changes that fail to sync,
+        When the backoff delays pass,
+        Then the board retries after 5 s and then after 10 s more
+        """)
+    func pendingChangesRetryWithBackoff() async {
+        let clock = TestClock()
+        let fetches = LockIsolated(0)
+        let (counts, continuation) = AsyncStream<Int>.makeStream()
+        let sut = withDependencies {
+            makeDependencies(&$0)
+            $0.continuousClock = clock
+            $0.locale = Locale(identifier: "en_US")
+            $0.taskClient.fetchTasks = {
+                fetches.withValue { $0 += 1 }
+                return TaskItem.samples
+            }
+            $0.taskClient.pendingSyncCounts = { counts }
+        } operation: { TaskBoardViewModel() }
+
+        sut.trigger(.onAppear)
+        await sut.loadTask?.value
+        continuation.yield(1)
+        continuation.finish()
+        await sut.pendingSyncTask?.value
+
+        await clock.advance(by: .seconds(4))
+        #expect(fetches.value == 1)
+        var retry = sut.syncRetryTask
+        await clock.advance(by: .seconds(1))
+        await retry?.value
+        await sut.loadTask?.value
+        #expect(fetches.value == 2)
+
+        retry = sut.syncRetryTask
+        await clock.advance(by: .seconds(9))
+        #expect(fetches.value == 2)
+        await clock.advance(by: .seconds(1))
+        await retry?.value
+        await sut.loadTask?.value
+        #expect(fetches.value == 3)
+    }
+
+    @Test("""
+        Given a scheduled sync retry,
+        When the pending count drops to zero,
+        Then the retry is cancelled and no extra reload happens
+        """)
+    func syncedChangesCancelRetry() async {
+        let clock = TestClock()
+        let fetches = LockIsolated(0)
+        let (counts, continuation) = AsyncStream<Int>.makeStream()
+        let sut = withDependencies {
+            makeDependencies(&$0)
+            $0.continuousClock = clock
+            $0.locale = Locale(identifier: "en_US")
+            $0.taskClient.fetchTasks = {
+                fetches.withValue { $0 += 1 }
+                return TaskItem.samples
+            }
+            $0.taskClient.pendingSyncCounts = { counts }
+        } operation: { TaskBoardViewModel() }
+
+        sut.trigger(.onAppear)
+        await sut.loadTask?.value
+        continuation.yield(1)
+        continuation.yield(0)
+        continuation.finish()
+        await sut.pendingSyncTask?.value
+        #expect(sut.syncRetryTask == nil)
+
+        await clock.advance(by: .seconds(300))
+        #expect(fetches.value == 1)
+    }
+
+    @Test("""
+        Given changes waiting to sync,
+        When the device is offline,
+        Then no retry is scheduled until the connection is back
+        """)
+    func offlineSkipsSyncRetry() async {
+        let clock = TestClock()
+        let fetches = LockIsolated(0)
+        let (counts, countContinuation) = AsyncStream<Int>.makeStream()
+        let (paths, pathContinuation) = AsyncStream<Bool>.makeStream()
+        let sut = withDependencies {
+            makeDependencies(&$0)
+            $0.continuousClock = clock
+            $0.locale = Locale(identifier: "en_US")
+            $0.taskClient.fetchTasks = {
+                fetches.withValue { $0 += 1 }
+                return TaskItem.samples
+            }
+            $0.taskClient.pendingSyncCounts = { counts }
+            $0.networkMonitorClient.isOnlineUpdates = { paths }
+        } operation: { TaskBoardViewModel() }
+
+        sut.trigger(.onAppear)
+        await sut.loadTask?.value
+        pathContinuation.yield(false)
+        pathContinuation.finish()
+        await sut.connectivityTask?.value
+        countContinuation.yield(1)
+        countContinuation.finish()
+        await sut.pendingSyncTask?.value
+
+        #expect(sut.syncRetryTask == nil)
+        await clock.advance(by: .seconds(300))
+        #expect(fetches.value == 1)
+    }
+
+    @Test("""
+        Given the retry delay schedule,
+        When attempts grow,
+        Then delays double from 5 s and stop at 5 min
+        """)
+    func syncRetryDelayDoublesUpToCap() {
+        let delays = (0..<8).map { TaskBoardViewModel.syncRetryDelay(attempt: $0) }
+        #expect(delays == [5, 10, 20, 40, 80, 160, 300, 300].map { Duration.seconds($0) })
+    }
+
+    @Test("""
+        Given cached tasks with the offline banner and a change waiting to sync,
+        When the retry fires and its fetch fails again,
+        Then the list and banner stay put during the retry and another retry is scheduled
+        """)
+    func failedRetryKeepsBannerAndReschedules() async {
+        let clock = TestClock()
+        let fetches = LockIsolated(0)
+        let (started, startedContinuation) = AsyncStream<Void>.makeStream()
+        let (gate, gateContinuation) = AsyncStream<Void>.makeStream()
+        let (counts, continuation) = AsyncStream<Int>.makeStream()
+        let sut = withDependencies {
+            makeDependencies(&$0)
+            $0.continuousClock = clock
+            $0.locale = Locale(identifier: "en_US")
+            $0.taskClient.cachedTasks = { TaskItem.samples }
+            $0.taskClient.fetchTasks = {
+                let count = fetches.withValue { $0 += 1; return $0 }
+                if count > 1 {
+                    startedContinuation.yield()
+                    for await _ in gate { break }
+                }
+                throw TestError()
+            }
+            $0.taskClient.pendingSyncCounts = { counts }
+        } operation: { TaskBoardViewModel() }
+
+        sut.trigger(.onAppear)
+        await sut.loadTask?.value
+        continuation.yield(1)
+        continuation.finish()
+        await sut.pendingSyncTask?.value
+        #expect(sut.state.reloadErrorMessage == L10n.TaskBoard.offlineError)
+
+        let retry = sut.syncRetryTask
+        await clock.advance(by: .seconds(5))
+        await retry?.value
+        var startedIterator = started.makeAsyncIterator()
+        await startedIterator.next()
+        #expect(sut.state.phase == .content)
+        #expect(sut.state.reloadErrorMessage == L10n.TaskBoard.offlineError)
+
+        gateContinuation.yield()
+        await sut.loadTask?.value
+        #expect(fetches.value == 2)
+        #expect(sut.state.reloadErrorMessage == L10n.TaskBoard.offlineError)
+        #expect(sut.syncRetryTask != nil)
+    }
+
+    @Test("""
+        Given a scheduled sync retry and a pull-to-refresh still loading,
+        When the retry comes due,
+        Then it leaves the running load alone
+        """)
+    func retryDoesNotCancelRunningLoad() async {
+        let clock = TestClock()
+        let fetches = LockIsolated(0)
+        let (started, startedContinuation) = AsyncStream<Void>.makeStream()
+        let (gate, gateContinuation) = AsyncStream<Void>.makeStream()
+        let (counts, continuation) = AsyncStream<Int>.makeStream()
+        let sut = withDependencies {
+            makeDependencies(&$0)
+            $0.continuousClock = clock
+            $0.locale = Locale(identifier: "en_US")
+            $0.taskClient.fetchTasks = {
+                let count = fetches.withValue { $0 += 1; return $0 }
+                if count == 2 {
+                    startedContinuation.yield()
+                    for await _ in gate { break }
+                }
+                return TaskItem.samples
+            }
+            $0.taskClient.pendingSyncCounts = { counts }
+        } operation: { TaskBoardViewModel() }
+
+        sut.trigger(.onAppear)
+        await sut.loadTask?.value
+        continuation.yield(1)
+        continuation.finish()
+        await sut.pendingSyncTask?.value
+        let retry = sut.syncRetryTask
+
+        sut.trigger(.refreshRequested)
+        let running = sut.loadTask
+        var startedIterator = started.makeAsyncIterator()
+        await startedIterator.next()
+        await clock.advance(by: .seconds(5))
+        await retry?.value
+        #expect(sut.loadTask == running)
+        #expect(running?.isCancelled == false)
+
+        gateContinuation.yield()
+        await sut.loadTask?.value
+        #expect(fetches.value == 2)
+        #expect(sut.syncRetryTask != nil)
+    }
+
+    @Test("""
+        Given a scheduled sync retry,
+        When the device goes offline,
+        Then the retry is cancelled
+        """)
+    func goingOfflineCancelsRetry() async {
+        let clock = TestClock()
+        let fetches = LockIsolated(0)
+        let (counts, countContinuation) = AsyncStream<Int>.makeStream()
+        let (paths, pathContinuation) = AsyncStream<Bool>.makeStream()
+        let sut = withDependencies {
+            makeDependencies(&$0)
+            $0.continuousClock = clock
+            $0.locale = Locale(identifier: "en_US")
+            $0.taskClient.fetchTasks = {
+                fetches.withValue { $0 += 1 }
+                return TaskItem.samples
+            }
+            $0.taskClient.pendingSyncCounts = { counts }
+            $0.networkMonitorClient.isOnlineUpdates = { paths }
+        } operation: { TaskBoardViewModel() }
+
+        sut.trigger(.onAppear)
+        await sut.loadTask?.value
+        countContinuation.yield(1)
+        countContinuation.finish()
+        await sut.pendingSyncTask?.value
+        #expect(sut.syncRetryTask != nil)
+
+        pathContinuation.yield(false)
+        pathContinuation.finish()
+        await sut.connectivityTask?.value
+        #expect(sut.syncRetryTask == nil)
+        await clock.advance(by: .seconds(300))
+        #expect(fetches.value == 1)
+    }
+
+    @Test("""
+        Given a retry already scheduled once,
+        When the connection comes back after being lost,
+        Then the next retry is again 5 s away
+        """)
+    func reconnectResetsBackoff() async {
+        let clock = TestClock()
+        let fetches = LockIsolated(0)
+        let (counts, countContinuation) = AsyncStream<Int>.makeStream()
+        let (paths, pathContinuation) = AsyncStream<Bool>.makeStream()
+        let sut = withDependencies {
+            makeDependencies(&$0)
+            $0.continuousClock = clock
+            $0.locale = Locale(identifier: "en_US")
+            $0.taskClient.fetchTasks = {
+                fetches.withValue { $0 += 1 }
+                return TaskItem.samples
+            }
+            $0.taskClient.pendingSyncCounts = { counts }
+            $0.networkMonitorClient.isOnlineUpdates = { paths }
+        } operation: { TaskBoardViewModel() }
+
+        sut.trigger(.onAppear)
+        await sut.loadTask?.value
+        countContinuation.yield(1)
+        countContinuation.finish()
+        await sut.pendingSyncTask?.value
+        pathContinuation.yield(false)
+        pathContinuation.yield(true)
+        pathContinuation.finish()
+        await sut.connectivityTask?.value
+        await sut.loadTask?.value
+        #expect(fetches.value == 2)
+
+        let retry = sut.syncRetryTask
+        await clock.advance(by: .seconds(5))
+        await retry?.value
+        await sut.loadTask?.value
+        #expect(fetches.value == 3)
+    }
+
+    @Test("""
+        Given a retry already scheduled once,
+        When the queue empties and a new change starts waiting,
+        Then the next retry is again 5 s away
+        """)
+    func emptyQueueResetsBackoff() async {
+        let clock = TestClock()
+        let fetches = LockIsolated(0)
+        let (counts, continuation) = AsyncStream<Int>.makeStream()
+        let sut = withDependencies {
+            makeDependencies(&$0)
+            $0.continuousClock = clock
+            $0.locale = Locale(identifier: "en_US")
+            $0.taskClient.fetchTasks = {
+                fetches.withValue { $0 += 1 }
+                return TaskItem.samples
+            }
+            $0.taskClient.pendingSyncCounts = { counts }
+        } operation: { TaskBoardViewModel() }
+
+        sut.trigger(.onAppear)
+        await sut.loadTask?.value
+        continuation.yield(1)
+        continuation.yield(0)
+        continuation.yield(1)
+        continuation.finish()
+        await sut.pendingSyncTask?.value
+
+        let retry = sut.syncRetryTask
+        await clock.advance(by: .seconds(5))
+        await retry?.value
+        await sut.loadTask?.value
+        #expect(fetches.value == 2)
     }
 }
