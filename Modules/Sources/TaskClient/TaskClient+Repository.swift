@@ -43,15 +43,19 @@ extension TaskClient {
             @Dependency(\.taskNetworkClient) var network
             @Dependency(\.uuid) var uuid
             let scope = cacheScope()
+            // One id for both paths: it is the request's idempotency key and, if the request
+            // fails, the queued task's local id. A create that reached the server but whose
+            // answer was lost is then replayed by the sync instead of duplicated.
+            let localID = uuid()
             do {
                 let task = try await mapErrors {
-                    try await network.createTask(TaskDraftDTO(draft)).toDomain()
+                    try await network.createTask(TaskDraftDTO(draft), localID).toDomain()
                 }
                 await updateCache { cache in try await cache.upsert(scope, task) }
                 return task
             } catch TaskClientError.unavailable {
                 let task = TaskItem(
-                    id: uuid(),
+                    id: localID,
                     title: try validatedTitle(draft.title),
                     notes: draft.notes,
                     priority: draft.priority,

@@ -10,8 +10,12 @@ extension TaskNetworkClient {
             fetchTasks: {
                 try await perform(baseURL: baseURL) { Endpoint<[TaskDTO]>(path: "tasks") }
             },
-            createTask: { body in
-                try await perform(baseURL: baseURL) { try .json(.post, path: "tasks", body: body) }
+            createTask: { body, idempotencyKey in
+                try await perform(baseURL: baseURL) {
+                    var endpoint = try Endpoint<TaskDTO>.json(.post, path: "tasks", body: body)
+                    endpoint.headers["Idempotency-Key"] = idempotencyKey.uuidString
+                    return endpoint
+                }
             },
             updateTask: { body in
                 try await perform(baseURL: baseURL) {

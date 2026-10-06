@@ -56,18 +56,24 @@ extension TaskClient {
                         notes: task.notes,
                         priority: task.priority,
                         dueDate: task.dueDate
-                    ))).toDomain()
+                    )), change.taskID).toDomain()
                 }
-                guard task.isComplete != created.isComplete else { return .created(created) }
-                // A create can't carry completion; a task completed offline needs a follow-up update.
-                var completed = created
-                completed.isComplete = task.isComplete
+                var desired = created
+                desired.title = task.title
+                desired.notes = task.notes
+                desired.priority = task.priority
+                desired.isComplete = task.isComplete
+                desired.dueDate = task.dueDate
+                // A create can't carry completion, and a replayed key returns the task as first
+                // stored, without edits queued since; either way the queued values follow as an
+                // update.
+                guard TaskDTO(desired) != TaskDTO(created) else { return .created(created) }
                 do {
                     return .created(try await mapErrors {
-                        try await network.updateTask(TaskDTO(completed)).toDomain()
+                        try await network.updateTask(TaskDTO(desired)).toDomain()
                     })
                 } catch is TaskClientError {
-                    // The task exists on the server now: record it and leave the completion queued.
+                    // The task exists on the server now: record it and leave the values queued.
                     return .createdNeedingUpdate(created)
                 }
             case .update:

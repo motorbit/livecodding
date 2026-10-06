@@ -7,6 +7,7 @@ import Testing
 private func makeDependencies(_ dependencies: inout DependencyValues) {
     dependencies.environmentClient.current = { EnvironmentConfig(environment: .local, apiBackend: .mock) }
     dependencies.taskCacheClient = .inMemory()
+    dependencies.uuid = .incrementing
     dependencies.taskNetworkClient = .mock(policy: .instant)
 }
 

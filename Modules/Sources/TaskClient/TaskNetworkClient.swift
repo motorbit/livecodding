@@ -12,7 +12,9 @@ import Logging
 @DependencyClient
 struct TaskNetworkClient: Sendable {
     var fetchTasks: @Sendable () async throws -> [TaskDTO]
-    var createTask: @Sendable (_ body: TaskDraftDTO) async throws -> TaskDTO
+    /// `idempotencyKey` makes the call safe to repeat: a server that has already created a task
+    /// for the key returns that task instead of creating another.
+    var createTask: @Sendable (_ body: TaskDraftDTO, _ idempotencyKey: UUID) async throws -> TaskDTO
     var updateTask: @Sendable (_ body: TaskDTO) async throws -> TaskDTO
     var deleteTask: @Sendable (_ id: UUID) async throws -> Void
 }
@@ -60,7 +62,7 @@ extension TaskNetworkClient {
         }
         return Self(
             fetchTasks: { try await backend().fetchTasks() },
-            createTask: { try await backend().createTask($0) },
+            createTask: { try await backend().createTask($0, $1) },
             updateTask: { try await backend().updateTask($0) },
             deleteTask: { try await backend().deleteTask($0) }
         )

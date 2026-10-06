@@ -17,9 +17,9 @@ private final class Server: Sendable {
                 try self.record("fetch")
                 return try await self.mock.fetchTasks()
             },
-            createTask: { body in
+            createTask: { body, key in
                 try self.record("create \(body.title)")
-                return try await self.mock.createTask(body)
+                return try await self.mock.createTask(body, key)
             },
             updateTask: { body in
                 try self.record("update \(body.title)")
@@ -220,8 +220,8 @@ struct TaskClientSyncTests {
             makeDependencies(&$0, server: server)
             $0.taskCacheClient = cache
             let network = server.client
-            $0.taskNetworkClient.createTask = { body in
-                let created = try await network.createTask(body)
+            $0.taskNetworkClient.createTask = { body, key in
+                let created = try await network.createTask(body, key)
                 if let id = localID.value {
                     try await cache.enqueue("local", .update(TaskItem(id: id, title: "Edited", priority: .low)))
                 }
@@ -304,8 +304,8 @@ struct TaskClientSyncTests {
         try await withDependencies {
             makeDependencies(&$0, server: server)
             let network = server.client
-            $0.taskNetworkClient.createTask = { body in
-                let task = try await network.createTask(body)
+            $0.taskNetworkClient.createTask = { body, key in
+                let task = try await network.createTask(body, key)
                 createdSignal.yield()
                 for await _ in proceed { break }
                 return task
@@ -329,4 +329,74 @@ struct TaskClientSyncTests {
             #expect(synced.last?.isPendingSync == false)
         }
     }
+
+    @Test("""
+        Given a create the server stored but whose answer was lost,
+        When the queued create is synced,
+        Then the server returns the stored task for the same key and no duplicate is created
+        """)
+    func lostAnswerOnCreateIsReplayedNotDuplicated() async throws {
+        let server = Server()
+        let keys = LockIsolated<[UUID]>([])
+        let answerLost = LockIsolated(true)
+        try await withDependencies {
+            makeDependencies(&$0, server: server)
+            let network = server.client
+            $0.taskNetworkClient.createTask = { body, key in
+                keys.withValue { $0.append(key) }
+                let task = try await network.createTask(body, key)
+                if answerLost.value {
+                    answerLost.setValue(false)
+                    throw TaskNetworkError.transport
+                }
+                return task
+            }
+        } operation: {
+            let sut = TaskClient.repository
+
+            let local = try await sut.createTask(TaskDraft(title: "Once"))
+            #expect(local.isPendingSync)
+            let synced = try await sut.fetchTasks()
+
+            #expect(keys.value == [local.id, local.id])
+            #expect(synced.filter { $0.title == "Once" }.count == 1)
+            #expect(synced.last?.isPendingSync == false)
+        }
+    }
+
+    @Test("""
+        Given a create whose answer was lost and a later offline edit of the task,
+        When the queued create is synced and the server returns the task as first stored,
+        Then the edit follows as an update and the server has the edited task
+        """)
+    func editAfterLostAnswerIsSentAsUpdate() async throws {
+        let server = Server()
+        let answerLost = LockIsolated(true)
+        try await withDependencies {
+            makeDependencies(&$0, server: server)
+            let network = server.client
+            $0.taskNetworkClient.createTask = { body, key in
+                let task = try await network.createTask(body, key)
+                if answerLost.value {
+                    answerLost.setValue(false)
+                    throw TaskNetworkError.transport
+                }
+                return task
+            }
+        } operation: {
+            let sut = TaskClient.repository
+            var local = try await sut.createTask(TaskDraft(title: "Draft"))
+            local.title = "Final"
+            _ = try await sut.updateTask(local)
+
+            let synced = try await sut.fetchTasks()
+
+            #expect(server.calls.value == ["create Draft", "create Final", "update Final", "fetch"])
+            #expect(synced.filter { $0.title == "Final" }.count == 1)
+            #expect(synced.contains { $0.title == "Draft" } == false)
+            let onServer = try await server.mock.fetchTasks()
+            #expect(onServer.last?.title == "Final")
+        }
+    }
 }
+
