@@ -44,6 +44,12 @@ yet"). From the first appearance, the VM observes `taskClient.pendingSyncCounts(
 (`pendingSyncTask`) and shows `pendingSyncMessage` ("N changes waiting to sync") while the count is
 above zero. It also observes `networkMonitorClient.isOnlineUpdates()` (`connectivityTask`) and
 reloads when the path goes from offline to online. Every load syncs first (inside `fetchTasks`).
+While changes are waiting and the device isn't known to be offline, the VM retries with backoff
+(`syncRetryTask`, injected `continuousClock`): it reloads after 5 s, then 10, 20 … up to 5 min
+(`syncRetryDelay(attempt:)`). The count dropping to zero cancels the retry and resets the backoff;
+going offline cancels it, and getting the path back reloads and resets it. A retry never cancels a
+load that is already running (that load reschedules when it finishes), and it reloads quietly: the
+phase and the reload banner stay until the result arrives.
 
 A detail opened on a task created offline keeps its temporary id. If a reload replaces it with the
 server's id meanwhile, detail's `.updated`/`.deleted` no longer match a row; `TaskClient` has
