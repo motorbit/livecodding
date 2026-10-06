@@ -16,7 +16,8 @@ public struct TaskBoardRowState: Equatable, Identifiable {
     public var priorityText: String
     public var priorityAccessibilityLabel: String
     public var isComplete: Bool
-    /// A completion or delete request for this row is in flight; its controls are disabled.
+    /// A delete request for this row is in flight; it shows a spinner and its controls are
+    /// disabled. A completion in flight isn't shown: the row already has the requested value.
     public var isInFlight: Bool
     public var completionAccessibilityLabel: String
     /// Inline error for the row's last failed operation; Retry sends `.rowRetryTapped`.

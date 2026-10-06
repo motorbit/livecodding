@@ -330,7 +330,7 @@ struct TaskBoardCompletionTests {
     @Test("""
         Given loaded tasks,
         When a row's completion is toggled and the update succeeds,
-        Then only that row changes and order is preserved
+        Then the row shows the new value at once, without a spinner, and order is preserved
         """)
     func completionSuccess() async {
         let requests = LockIsolated<[TaskItem]>([])
@@ -345,7 +345,8 @@ struct TaskBoardCompletionTests {
         await sut.loadTask?.value
 
         sut.trigger(.completionToggled(firstID))
-        #expect(sut.state.rows[0].isInFlight)
+        #expect(sut.state.rows[0].isComplete)
+        #expect(!sut.state.rows[0].isInFlight)
         await sut.rowTasks[firstID]?.value
 
         #expect(requests.value.map(\.id) == [firstID])
@@ -357,16 +358,16 @@ struct TaskBoardCompletionTests {
 
     @Test("""
         Given a completion request in flight,
-        When the row is toggled again,
-        Then no second request is sent
+        When the row is toggled twice more,
+        Then each toggle shows at once, and only the latest value is sent after the first answers
         """)
-    func completionInFlightIsDisabled() async {
+    func togglesDuringRequestAreCoalesced() async {
         let (gate, gateContinuation) = AsyncStream<Void>.makeStream()
-        let calls = LockIsolated(0)
+        let requests = LockIsolated<[Bool]>([])
         let sut = withDependencies {
             makeDependencies(&$0)
             $0.taskClient.updateTask = { task in
-                calls.withValue { $0 += 1 }
+                requests.withValue { $0.append(task.isComplete) }
                 for await _ in gate { break }
                 return task
             }
@@ -375,22 +376,221 @@ struct TaskBoardCompletionTests {
         await sut.loadTask?.value
 
         sut.trigger(.completionToggled(firstID))
-        let inFlight = sut.rowTasks[firstID]
+        let first = sut.rowTasks[firstID]
         sut.trigger(.completionToggled(firstID))
-        #expect(sut.state.rows[0].isInFlight)
+        #expect(!sut.state.rows[0].isComplete)
+        sut.trigger(.completionToggled(firstID))
+        sut.trigger(.completionToggled(firstID))
+        #expect(!sut.state.rows[0].isComplete)
 
         gateContinuation.yield()
+        await first?.value
+        #expect(!sut.state.rows[0].isComplete)
         gateContinuation.finish()
-        await inFlight?.value
+        await sut.rowTasks[firstID]?.value
+
+        #expect(requests.value == [true, false])
+        #expect(!sut.state.rows[0].isComplete)
+        #expect(sut.state.rows[0].errorMessage == nil)
+        gateContinuation.finish()
+    }
+
+    @Test("""
+        Given a completion toggled twice while the first request was in flight,
+        When the follow-up request fails,
+        Then the row goes back to the value the server confirmed, with an inline error
+        """)
+    func failedFollowUpRollsBackToConfirmed() async {
+        let (gate, gateContinuation) = AsyncStream<Void>.makeStream()
+        let calls = LockIsolated(0)
+        let sut = withDependencies {
+            makeDependencies(&$0)
+            $0.taskClient.updateTask = { task in
+                let call = calls.withValue { $0 += 1; return $0 }
+                for await _ in gate { break }
+                if call == 2 { throw TestError() }
+                return task
+            }
+        } operation: { TaskBoardViewModel() }
+        sut.trigger(.onAppear)
+        await sut.loadTask?.value
+
+        sut.trigger(.completionToggled(firstID))
+        let first = sut.rowTasks[firstID]
+        sut.trigger(.completionToggled(firstID))
+        gateContinuation.yield()
+        await first?.value
+        gateContinuation.finish()
+        await sut.rowTasks[firstID]?.value
+
+        #expect(calls.value == 2)
+        #expect(sut.state.rows[0].isComplete)
+        #expect(sut.state.rows[0].errorMessage == L10n.TaskBoard.completionError)
+        gateContinuation.finish()
+    }
+
+    @Test("""
+        Given the row was toggled three times while the first request was in flight,
+        When the first request fails,
+        Then the row goes back to the confirmed value with an inline error and no follow-up is sent
+        """)
+    func failedFirstRequestDropsQueuedToggles() async {
+        let (gate, gateContinuation) = AsyncStream<Void>.makeStream()
+        let calls = LockIsolated(0)
+        let sut = withDependencies {
+            makeDependencies(&$0)
+            $0.taskClient.updateTask = { _ in
+                calls.withValue { $0 += 1 }
+                for await _ in gate { break }
+                throw TestError()
+            }
+        } operation: { TaskBoardViewModel() }
+        sut.trigger(.onAppear)
+        await sut.loadTask?.value
+
+        sut.trigger(.completionToggled(firstID))
+        let first = sut.rowTasks[firstID]
+        sut.trigger(.completionToggled(firstID))
+        sut.trigger(.completionToggled(firstID))
+        gateContinuation.finish()
+        await first?.value
 
         #expect(calls.value == 1)
+        #expect(sut.rowTasks[firstID] == nil)
+        #expect(!sut.state.rows[0].isComplete)
+        #expect(sut.state.rows[0].errorMessage == L10n.TaskBoard.completionError)
+    }
+
+    @Test("""
+        Given the row was toggled back while its request was in flight,
+        When the request fails,
+        Then the row keeps the confirmed value with no error and no follow-up
+        """)
+    func failureAfterToggleBackShowsNoError() async {
+        let (gate, gateContinuation) = AsyncStream<Void>.makeStream()
+        let calls = LockIsolated(0)
+        let sut = withDependencies {
+            makeDependencies(&$0)
+            $0.taskClient.updateTask = { _ in
+                calls.withValue { $0 += 1 }
+                for await _ in gate { break }
+                throw TestError()
+            }
+        } operation: { TaskBoardViewModel() }
+        sut.trigger(.onAppear)
+        await sut.loadTask?.value
+
+        sut.trigger(.completionToggled(firstID))
+        let first = sut.rowTasks[firstID]
+        sut.trigger(.completionToggled(firstID))
+        gateContinuation.finish()
+        await first?.value
+
+        #expect(calls.value == 1)
+        #expect(sut.rowTasks[firstID] == nil)
+        #expect(!sut.state.rows[0].isComplete)
+        #expect(sut.state.rows[0].errorMessage == nil)
+    }
+
+    @Test("""
+        Given the row was toggled twice more while its request was in flight,
+        When the request succeeds with the value the row shows,
+        Then no follow-up request is sent
+        """)
+    func togglesBackToRequestedValueSendNoFollowUp() async {
+        let (gate, gateContinuation) = AsyncStream<Void>.makeStream()
+        let requests = LockIsolated<[Bool]>([])
+        let sut = withDependencies {
+            makeDependencies(&$0)
+            $0.taskClient.updateTask = { task in
+                requests.withValue { $0.append(task.isComplete) }
+                for await _ in gate { break }
+                return task
+            }
+        } operation: { TaskBoardViewModel() }
+        sut.trigger(.onAppear)
+        await sut.loadTask?.value
+
+        sut.trigger(.completionToggled(firstID))
+        let first = sut.rowTasks[firstID]
+        sut.trigger(.completionToggled(firstID))
+        sut.trigger(.completionToggled(firstID))
+        gateContinuation.finish()
+        await first?.value
+
+        #expect(requests.value == [true])
+        #expect(sut.rowTasks[firstID] == nil)
+        #expect(sut.state.rows[0].isComplete)
+        #expect(sut.state.rows[0].errorMessage == nil)
+    }
+
+    @Test("""
+        Given a completion request in flight and a reload that returns a newer server value,
+        When the request fails,
+        Then the row keeps the reloaded value and shows no error
+        """)
+    func failureRollsBackToReloadedValue() async {
+        let (gate, gateContinuation) = AsyncStream<Void>.makeStream()
+        let fetches = LockIsolated(0)
+        let sut = withDependencies {
+            makeDependencies(&$0)
+            $0.taskClient.fetchTasks = {
+                let fetch = fetches.withValue { $0 += 1; return $0 }
+                guard fetch > 1 else { return TaskItem.samples }
+                var tasks = TaskItem.samples
+                tasks[0].title = "Renamed elsewhere"
+                tasks[0].isComplete = true
+                return tasks
+            }
+            $0.taskClient.updateTask = { _ in
+                for await _ in gate { break }
+                throw TestError()
+            }
+        } operation: { TaskBoardViewModel() }
+        sut.trigger(.onAppear)
+        await sut.loadTask?.value
+
+        sut.trigger(.completionToggled(firstID))
+        sut.trigger(.refreshRequested)
+        await sut.loadTask?.value
+        gateContinuation.finish()
+        await sut.rowTasks[firstID]?.value
+
+        #expect(sut.state.rows[0].isComplete)
+        #expect(sut.state.rows[0].errorMessage == nil)
+    }
+
+    @Test("""
+        Given a completion request in flight,
+        When a reload returns the server's old value first,
+        Then the row keeps showing the requested value
+        """)
+    func reloadKeepsOptimisticValue() async {
+        let (gate, gateContinuation) = AsyncStream<Void>.makeStream()
+        let sut = withDependencies {
+            makeDependencies(&$0)
+            $0.taskClient.updateTask = { task in
+                for await _ in gate { break }
+                return task
+            }
+        } operation: { TaskBoardViewModel() }
+        sut.trigger(.onAppear)
+        await sut.loadTask?.value
+
+        sut.trigger(.completionToggled(firstID))
+        sut.trigger(.refreshRequested)
+        await sut.loadTask?.value
+
+        #expect(sut.state.rows[0].isComplete)
+        gateContinuation.finish()
+        await sut.rowTasks[firstID]?.value
         #expect(sut.state.rows[0].isComplete)
     }
 
     @Test("""
         Given a completion update fails,
         When Retry succeeds,
-        Then the prior value is kept with an inline error, then the toggle applies
+        Then the row rolls back to the prior value with an inline error, then the toggle applies
         """)
     func completionErrorThenRetry() async {
         let calls = LockIsolated(0)
@@ -406,6 +606,7 @@ struct TaskBoardCompletionTests {
         await sut.loadTask?.value
 
         sut.trigger(.completionToggled(dentistID))
+        #expect(!sut.state.rows[2].isComplete)
         await sut.rowTasks[dentistID]?.value
 
         #expect(sut.state.rows[2].isComplete)
@@ -1443,9 +1644,9 @@ struct TaskBoardReviewFixTests {
     @Test("""
         Given a completion request in flight,
         When the row is tapped,
-        Then detail does not open on the stale task
+        Then detail does not open, so it cannot save a stale snapshot over the request
         """)
-    func detailBlockedWhileRowInFlight() async {
+    func detailBlockedWhileCompletionInFlight() async {
         let (gate, gateContinuation) = AsyncStream<Void>.makeStream()
         let sut = withDependencies {
             makeDependencies(&$0)
@@ -1464,8 +1665,6 @@ struct TaskBoardReviewFixTests {
         #expect(sut.state.navigationPath.isEmpty)
         gateContinuation.finish()
         await sut.rowTasks[firstID]?.value
-        sut.trigger(.taskTapped(firstID))
-        #expect(sut.detailViewModel != nil)
     }
 
     @Test("""

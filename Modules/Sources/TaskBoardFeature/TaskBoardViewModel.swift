@@ -60,7 +60,9 @@ public final class TaskBoardViewModel: ObservableObject {
     private var hiddenDeletions: [UUID: HiddenRow] = [:]
 
     private enum RowStatus: Equatable {
-        case completionInFlight(generation: Int)
+        /// The row already shows the requested value; `confirmed` is the server's, restored if
+        /// the request fails.
+        case completionInFlight(generation: Int, confirmed: Bool)
         case completionFailed
         case deletionInFlight(generation: Int)
         case deletionFailed
@@ -216,12 +218,28 @@ public final class TaskBoardViewModel: ObservableObject {
             mutationGeneration += 1
             rowStatus[item.id] = nil
             rowTasks[item.id] = nil
-            if let index = tasks.firstIndex(where: { $0.id == item.id }) {
-                tasks[index] = item
+            guard let index = tasks.firstIndex(where: { $0.id == item.id }) else {
+                rebuildRows()
+                return
             }
-            rebuildRows()
+            let wanted = tasks[index].isComplete
+            tasks[index] = item
+            if wanted == item.isComplete {
+                rebuildRows()
+            } else {
+                // Toggled again while the request was in flight: send what the row shows now.
+                tasks[index].isComplete = wanted
+                sendCompletion(tasks[index], confirmed: item.isComplete)
+            }
         case .completionFailed(let id):
-            rowStatus[id] = .completionFailed
+            var showsConfirmed = false
+            if case .completionInFlight(_, let confirmed)? = rowStatus[id],
+               let index = tasks.firstIndex(where: { $0.id == id }) {
+                // Toggled back while in flight: the row already shows the server's value.
+                showsConfirmed = tasks[index].isComplete == confirmed
+                tasks[index].isComplete = confirmed
+            }
+            rowStatus[id] = showsConfirmed ? nil : .completionFailed
             rowTasks[id] = nil
             rebuildRows()
         case .undoWindowExpired:
@@ -345,7 +363,22 @@ public final class TaskBoardViewModel: ObservableObject {
     private func apply(_ items: [TaskItem]) {
         var hidden = Set(hiddenDeletions.keys)
         if let pendingDeletion { hidden.insert(pendingDeletion.row.item.id) }
-        tasks = items.filter { !hidden.contains($0.id) }
+        // A row whose completion is in flight keeps the value it shows until the request answers;
+        // the fetched value becomes the one a failure rolls back to.
+        var shown: [UUID: Bool] = [:]
+        for task in tasks {
+            if case .completionInFlight? = rowStatus[task.id] { shown[task.id] = task.isComplete }
+        }
+        tasks = items.filter { !hidden.contains($0.id) }.map { item in
+            var item = item
+            if let isComplete = shown[item.id] {
+                if case .completionInFlight(let generation, _)? = rowStatus[item.id] {
+                    rowStatus[item.id] = .completionInFlight(generation: generation, confirmed: item.isComplete)
+                }
+                item.isComplete = isComplete
+            }
+            return item
+        }
         let ids = Set(items.map(\.id)).union(hidden)
         rowStatus = rowStatus.filter { ids.contains($0.key) }
         state.reloadErrorMessage = nil
@@ -398,16 +431,33 @@ public final class TaskBoardViewModel: ObservableObject {
         }
     }
 
+    /// Optimistic: the row shows the new value at once and goes back to the server's value if the
+    /// request fails. A toggle while a request is in flight only changes the row; the latest value
+    /// is sent when that request answers, so requests for one row never race.
     private func toggleCompletion(id: UUID) {
-        guard let current = tasks.first(where: { $0.id == id }), !isInFlight(id) else { return }
+        guard let index = tasks.firstIndex(where: { $0.id == id }) else { return }
+        let confirmed: Bool
+        switch rowStatus[id] {
+        case .deletionInFlight?:
+            return
+        case .completionInFlight?:
+            tasks[index].isComplete.toggle()
+            rebuildRows()
+            return
+        case .completionFailed?, .deletionFailed?, nil:
+            confirmed = tasks[index].isComplete
+        }
+        tasks[index].isComplete.toggle()
+        sendCompletion(tasks[index], confirmed: confirmed)
+    }
 
+    private func sendCompletion(_ requested: TaskItem, confirmed: Bool) {
+        let id = requested.id
         rowGeneration += 1
         let generation = rowGeneration
         let client = taskClient
-        var requested = current
-        requested.isComplete.toggle()
         rowTasks[id]?.cancel()
-        rowStatus[id] = .completionInFlight(generation: generation)
+        rowStatus[id] = .completionInFlight(generation: generation, confirmed: confirmed)
         rebuildRows()
 
         rowTasks[id] = Task { [weak self] in
@@ -418,7 +468,7 @@ public final class TaskBoardViewModel: ObservableObject {
                 action = .completionFailed(id)
             }
             guard !Task.isCancelled, let self,
-                  self.rowStatus[id] == .completionInFlight(generation: generation) else { return }
+                  case .completionInFlight(generation, _)? = self.rowStatus[id] else { return }
             self.handle(action)
         }
     }
@@ -508,6 +558,13 @@ public final class TaskBoardViewModel: ObservableObject {
         }
     }
 
+    private func isDeletionInFlight(_ id: UUID) -> Bool {
+        switch rowStatus[id] {
+        case .deletionInFlight?: true
+        case .completionInFlight?, .completionFailed?, .deletionFailed?, nil: false
+        }
+    }
+
     private func isInFlight(_ id: UUID) -> Bool {
         switch rowStatus[id] {
         case .completionInFlight?, .deletionInFlight?: true
@@ -570,7 +627,8 @@ public final class TaskBoardViewModel: ObservableObject {
     }
 
     private func openDetail(id: UUID) {
-        // Detail copies the task; opening it mid-request would save a stale snapshot.
+        // Not while a row request is in flight: it sends the whole task, so a detail save could
+        // race it and overwrite or revert fields.
         guard state.navigationPath.isEmpty, !isInFlight(id),
               let item = tasks.first(where: { $0.id == id }) else { return }
         let child = withDependencies(from: self) {
@@ -630,7 +688,7 @@ public final class TaskBoardViewModel: ObservableObject {
                 priorityText: priorityText(item.priority),
                 priorityAccessibilityLabel: priorityAccessibilityLabel(item.priority),
                 isComplete: item.isComplete,
-                isInFlight: isInFlight(item.id),
+                isInFlight: isDeletionInFlight(item.id),
                 completionAccessibilityLabel: item.isComplete
                     ? L10n.TaskBoard.markIncomplete
                     : L10n.TaskBoard.markComplete,
