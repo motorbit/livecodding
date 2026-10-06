@@ -446,12 +446,17 @@ public final class TaskBoardViewModel: ObservableObject {
             state.isDetailDirty = isDirty
         case .updated(let item):
             mutationGeneration += 1
-            if let index = tasks.firstIndex(where: { $0.id == item.id }) {
-                tasks[index] = item
+            guard let index = tasks.firstIndex(where: { $0.id == item.id }) else {
+                // Detail holds an id the list no longer has (a task created offline got its
+                // server id in a reload). The change is saved under the right id, so reload.
+                load()
+                return
             }
+            tasks[index] = item
             rebuildRows()
         case .deleted(let id):
             mutationGeneration += 1
+            let isListed = tasks.contains { $0.id == id }
             tasks.removeAll { $0.id == id }
             rowTasks[id]?.cancel()
             rowTasks[id] = nil
@@ -459,6 +464,8 @@ public final class TaskBoardViewModel: ObservableObject {
             updatePhaseAfterRemoval()
             rebuildRows()
             popDetail()
+            // As for an update: the list has the task under its server id.
+            if !isListed { load() }
         }
     }
 
