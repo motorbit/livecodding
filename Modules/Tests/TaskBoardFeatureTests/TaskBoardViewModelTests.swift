@@ -679,6 +679,94 @@ struct TaskBoardDetailTests {
     }
 
     @Test("""
+        Given a detail open on a task whose id a reload has since replaced,
+        When the detail reports an update,
+        Then the board reloads and shows the server's list
+        """)
+    func detailUpdateForReplacedIDReloads() async {
+        let fetches = LockIsolated(0)
+        let serverID = UUID()
+        let renamed = TaskItem(id: serverID, title: "Renamed", priority: .low)
+        let lists = [TaskItem.samples, [renamed] + TaskItem.samples.dropFirst()]
+        let sut = withDependencies {
+            makeDependencies(&$0)
+            $0.taskClient.fetchTasks = {
+                fetches.withValue { $0 += 1 }
+                return lists[min(fetches.value, lists.count) - 1]
+            }
+        } operation: { TaskBoardViewModel() }
+        sut.trigger(.onAppear)
+        await sut.loadTask?.value
+        sut.trigger(.taskTapped(firstID))
+
+        sut.detailViewModel?.onEvent?(.updated(TaskItem(id: UUID(), title: "Renamed", priority: .low)))
+        await sut.loadTask?.value
+
+        #expect(fetches.value == 2)
+        #expect(sut.state.rows.map(\.id) == [serverID] + TaskItem.samples.dropFirst().map(\.id))
+        #expect(sut.state.rows[0].title == "Renamed")
+        #expect(sut.detailViewModel != nil)
+    }
+
+    @Test("""
+        Given a detail open on a task whose id a reload has since replaced,
+        When the detail reports deletion,
+        Then detail pops and the board reloads the server's list
+        """)
+    func detailDeleteForReplacedIDReloads() async {
+        let fetches = LockIsolated(0)
+        let lists = [TaskItem.samples, Array(TaskItem.samples.dropFirst())]
+        let sut = withDependencies {
+            makeDependencies(&$0)
+            $0.taskClient.fetchTasks = {
+                fetches.withValue { $0 += 1 }
+                return lists[min(fetches.value, lists.count) - 1]
+            }
+        } operation: { TaskBoardViewModel() }
+        sut.trigger(.onAppear)
+        await sut.loadTask?.value
+        sut.trigger(.taskTapped(firstID))
+
+        sut.detailViewModel?.onEvent?(.deleted(UUID()))
+        await sut.loadTask?.value
+
+        #expect(fetches.value == 2)
+        #expect(sut.state.rows.map(\.id) == TaskItem.samples.dropFirst().map(\.id))
+        #expect(sut.state.navigationPath.isEmpty)
+        #expect(sut.detailViewModel == nil)
+    }
+
+    @Test("""
+        Given a detail open on a task whose id a reload has since replaced, and no connection,
+        When the detail reports deletion and the reload fails,
+        Then the board shows the cached list without the task and the offline banner
+        """)
+    func detailDeleteForReplacedIDOfflineShowsCache() async {
+        let fetches = LockIsolated(0)
+        let cached = Array(TaskItem.samples.dropFirst())
+        let sut = withDependencies {
+            makeDependencies(&$0)
+            $0.taskClient.fetchTasks = {
+                let count = fetches.withValue { $0 += 1; return $0 }
+                guard count == 1 else { throw TestError() }
+                return TaskItem.samples
+            }
+            $0.taskClient.cachedTasks = { cached }
+        } operation: { TaskBoardViewModel() }
+        sut.trigger(.onAppear)
+        await sut.loadTask?.value
+        sut.trigger(.taskTapped(firstID))
+
+        sut.detailViewModel?.onEvent?(.deleted(UUID()))
+        await sut.loadTask?.value
+
+        #expect(fetches.value == 2)
+        #expect(sut.state.rows.map(\.id) == cached.map(\.id))
+        #expect(sut.state.reloadErrorMessage == L10n.TaskBoard.offlineError)
+        #expect(sut.state.navigationPath.isEmpty)
+    }
+
+    @Test("""
         Given a dirty detail,
         When the system pops and the user cancels the confirmation,
         Then detail stays pushed with its unchanged child

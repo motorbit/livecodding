@@ -259,8 +259,9 @@ public final class TaskBoardViewModel: ObservableObject {
 
     /// Stale-while-revalidate: when nothing is on screen yet, cached tasks are shown first, then
     /// replaced by the fetched list. If the fetch fails, the cached list stays with an offline
-    /// banner.
-    private func load() {
+    /// banner. `readsCache` reads the cache whatever is on screen, so a change the cache has under
+    /// another id shows even if the fetch fails.
+    private func load(readsCache: Bool = false) {
         loadTask?.cancel()
         loadGeneration += 1
         let generation = loadGeneration
@@ -277,7 +278,8 @@ public final class TaskBoardViewModel: ObservableObject {
         state.reloadErrorMessage = nil
 
         loadTask = Task { [weak self] in
-            if showsCache, let cached = try? await client.cachedTasks(), !cached.isEmpty {
+            if showsCache || readsCache, let cached = try? await client.cachedTasks(),
+               !cached.isEmpty || readsCache {
                 guard !Task.isCancelled, self?.loadGeneration == generation else { return }
                 if self?.mutationGeneration == currentMutationGeneration {
                     self?.handle(.cachedLoaded(cached))
@@ -446,12 +448,18 @@ public final class TaskBoardViewModel: ObservableObject {
             state.isDetailDirty = isDirty
         case .updated(let item):
             mutationGeneration += 1
-            if let index = tasks.firstIndex(where: { $0.id == item.id }) {
-                tasks[index] = item
+            guard let index = tasks.firstIndex(where: { $0.id == item.id }) else {
+                // Detail holds an id the list no longer has (a task created offline got its
+                // server id in a reload). The change is saved under the right id, so reload,
+                // from the cache too in case the fetch fails.
+                load(readsCache: true)
+                return
             }
+            tasks[index] = item
             rebuildRows()
         case .deleted(let id):
             mutationGeneration += 1
+            let isListed = tasks.contains { $0.id == id }
             tasks.removeAll { $0.id == id }
             rowTasks[id]?.cancel()
             rowTasks[id] = nil
@@ -459,6 +467,8 @@ public final class TaskBoardViewModel: ObservableObject {
             updatePhaseAfterRemoval()
             rebuildRows()
             popDetail()
+            // As for an update: the list has the task under its server id.
+            if !isListed { load(readsCache: true) }
         }
     }
 

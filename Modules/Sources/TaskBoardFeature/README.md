@@ -45,6 +45,11 @@ yet"). From the first appearance, the VM observes `taskClient.pendingSyncCounts(
 above zero. It also observes `networkMonitorClient.isOnlineUpdates()` (`connectivityTask`) and
 reloads when the path goes from offline to online. Every load syncs first (inside `fetchTasks`).
 
+A detail opened on a task created offline keeps its temporary id. If a reload replaces it with the
+server's id meanwhile, detail's `.updated`/`.deleted` no longer match a row; `TaskClient` has
+already applied the change under the server's id, so the board reloads instead. That reload reads
+the cache first, so the change shows even when the fetch fails offline.
+
 ## Search and sort
 
 Local only; never triggers a request. `rebuildRows()` stable-sorts `tasks` by `state.sortOrder`
