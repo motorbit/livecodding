@@ -90,6 +90,10 @@ public struct TaskClient: Sendable {
     /// The number of changes waiting to sync in the active environment: the current value, then
     /// every change.
     public var pendingSyncCounts: @Sendable () -> AsyncStream<Int> = { AsyncStream { $0.finish() } }
+    /// The number of queued changes the sync dropped because the task had changed on the server
+    /// (server wins), not yet dismissed: the current value, then every change.
+    public var syncConflictCounts: @Sendable () -> AsyncStream<Int> = { AsyncStream { $0.finish() } }
+    public var dismissSyncConflicts: @Sendable () async throws -> Void
 }
 
 extension TaskClient: DependencyKey {

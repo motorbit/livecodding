@@ -17,14 +17,18 @@ extension TaskNetworkClient {
                     return endpoint
                 }
             },
-            updateTask: { body in
+            updateTask: { body, ifMatch in
                 try await perform(baseURL: baseURL) {
-                    try .json(.put, path: "tasks/\(body.id.uuidString)", body: body)
+                    var endpoint = try Endpoint<TaskDTO>.json(.put, path: "tasks/\(body.id.uuidString)", body: body)
+                    endpoint.setIfMatch(ifMatch)
+                    return endpoint
                 }
             },
-            deleteTask: { id in
+            deleteTask: { id, ifMatch in
                 _ = try await perform(baseURL: baseURL) {
-                    Endpoint<EmptyResponse>(method: .delete, path: "tasks/\(id.uuidString)")
+                    var endpoint = Endpoint<EmptyResponse>(method: .delete, path: "tasks/\(id.uuidString)")
+                    endpoint.setIfMatch(ifMatch)
+                    return endpoint
                 }
             }
         )
@@ -45,11 +49,19 @@ extension TaskNetworkClient {
     }
 }
 
+private extension Endpoint {
+    mutating func setIfMatch(_ version: Int?) {
+        guard let version else { return }
+        headers["If-Match"] = "\"\(version)\""
+    }
+}
+
 extension TaskNetworkError {
     static func map(_ error: NetworkError) -> any Error {
         switch error {
         case .httpStatus(400): TaskNetworkError.badRequest
         case .httpStatus(404): TaskNetworkError.notFound
+        case .httpStatus(412): TaskNetworkError.conflict
         case .httpStatus: TaskNetworkError.serverError
         case .cancelled: CancellationError()
         case .transport, .decoding, .invalidRequest, .unknown: TaskNetworkError.transport

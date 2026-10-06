@@ -42,7 +42,10 @@ again so it cannot revert the confirmed mutation.
 successes here. Rows whose task has `isPendingSync` get a badge (`pendingSyncLabel`, "Not synced
 yet"). From the first appearance, the VM observes `taskClient.pendingSyncCounts()`
 (`pendingSyncTask`) and shows `pendingSyncMessage` ("N changes waiting to sync") while the count is
-above zero. It also observes `networkMonitorClient.isOnlineUpdates()` (`connectivityTask`) and
+above zero. It also observes `taskClient.syncConflictCounts()` (`syncConflictTask`) and shows
+`syncConflictMessage` ("N offline changes weren't applied: … changed on the server") with an OK
+button; `.syncConflictDismissed` hides it at once and calls `dismissSyncConflicts()`
+(`dismissConflictsTask`). It also observes `networkMonitorClient.isOnlineUpdates()` (`connectivityTask`) and
 reloads when the path goes from offline to online. Every load syncs first (inside `fetchTasks`).
 While changes are waiting and the device isn't known to be offline, the VM retries with backoff
 (`syncRetryTask`, injected `continuousClock`): it reloads after 5 s, then 10, 20 … up to 5 min

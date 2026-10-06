@@ -29,6 +29,12 @@ public extension L10n {
         public static func pendingSyncCount(_ count: Int, locale: Locale) -> String {
             String(localized: "taskBoard.pendingSync.count \(count)", bundle: .module, locale: locale)
         }
+        public static func syncConflictCount(_ count: Int, locale: Locale) -> String {
+            String(localized: "taskBoard.syncConflict.count \(count)", bundle: .module, locale: locale)
+        }
+        public static var syncConflictDismiss: String {
+            String(localized: "taskBoard.syncConflict.dismiss", defaultValue: "OK", bundle: .module)
+        }
         public static var offlineError: String {
             String(localized: "taskBoard.error.offline", defaultValue: "Can't reach the server. Showing saved tasks.", bundle: .module)
         }

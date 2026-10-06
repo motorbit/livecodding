@@ -25,7 +25,8 @@ struct MockNetworkPolicy: Sendable {
 }
 
 /// In-memory stand-in for the Task backend. Behaves like a remote API: async, delayed, can fail,
-/// owns IDs, validates input, trims titles and honours idempotency keys on create.
+/// owns IDs, validates input, trims titles, honours idempotency keys on create and versions tasks
+/// like the server (`If-Match` → `.conflict`).
 actor MockNetworkClient {
     private let policy: MockNetworkPolicy
     private var tasks: [TaskDTO]
@@ -54,30 +55,35 @@ actor MockNetworkClient {
             notes: body.notes,
             priority: body.priority,
             done: false,
-            dueDate: body.dueDate
+            dueDate: body.dueDate,
+            version: 1
         )
         tasks.append(task)
         createdByKey[idempotencyKey] = task.id
         return task
     }
 
-    func updateTask(_ body: TaskDTO) async throws -> TaskDTO {
+    func updateTask(_ body: TaskDTO, ifMatch: Int? = nil) async throws -> TaskDTO {
         try await simulate(policy.writeDelay())
-        guard let index = tasks.firstIndex(where: { $0.id == body.id }) else {
-            throw TaskNetworkError.notFound
-        }
+        let index = try matchingIndex(body.id, ifMatch: ifMatch)
         var task = body
         task.title = try validatedTitle(body.title)
+        task.version = (tasks[index].version ?? 1) + 1
         tasks[index] = task
         return task
     }
 
-    func deleteTask(_ id: UUID) async throws {
+    func deleteTask(_ id: UUID, ifMatch: Int? = nil) async throws {
         try await simulate(policy.writeDelay())
+        tasks.remove(at: try matchingIndex(id, ifMatch: ifMatch))
+    }
+
+    private func matchingIndex(_ id: UUID, ifMatch: Int?) throws -> Int {
         guard let index = tasks.firstIndex(where: { $0.id == id }) else {
             throw TaskNetworkError.notFound
         }
-        tasks.remove(at: index)
+        if let ifMatch, tasks[index].version != ifMatch { throw TaskNetworkError.conflict }
+        return index
     }
 
     private func simulate(_ delay: Duration) async throws {
@@ -110,7 +116,8 @@ extension MockNetworkClient {
                 notes: seed.notes,
                 priority: seed.priority,
                 done: seed.done,
-                dueDate: nil
+                dueDate: nil,
+                version: 1
             )
         }
     }
@@ -131,8 +138,8 @@ extension TaskNetworkClient {
         return Self(
             fetchTasks: { try await network.fetchTasks() },
             createTask: { try await network.createTask($0, idempotencyKey: $1) },
-            updateTask: { try await network.updateTask($0) },
-            deleteTask: { try await network.deleteTask($0) }
+            updateTask: { try await network.updateTask($0, ifMatch: $1) },
+            deleteTask: { try await network.deleteTask($0, ifMatch: $1) }
         )
     }
 }

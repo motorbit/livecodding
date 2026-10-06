@@ -1,5 +1,6 @@
 import Dependencies
 import Foundation
+import GRDB
 import Testing
 @testable import TaskClient
 
@@ -92,6 +93,41 @@ struct TaskCacheClientTests {
 
         #expect(try await reopened.tasks("local") == TaskItem.samples)
     }
+    @Test("""
+        Given a database file from before versions, with a queued delete,
+        When it is opened by the current client,
+        Then it is upgraded, the change is kept without a base version and versions can be recorded
+        """)
+    func upgradesDatabaseWithoutVersions() async throws {
+        let directory = URL.temporaryDirectory.appending(path: UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let url = directory.appending(path: "TaskCache.sqlite")
+        let id = UUID()
+        do {
+            let old = try DatabaseQueue(path: url.path)
+            try TaskCacheDatabase.migrator.migrate(old, upTo: "v2-create-pendingChange")
+            try await old.write { db in
+                try db.execute(
+                    sql: """
+                        INSERT INTO pendingChange (scope, taskID, kind, isLocal, revision)
+                        VALUES ('local', ?, 'delete', 0, 0)
+                        """,
+                    arguments: [id.uuidString]
+                )
+            }
+            try old.close()
+        }
+
+        let sut = TaskCacheClient.live(database: TaskCacheDatabase(location: .file(url)))
+
+        let pending = try await sut.pendingChanges("local")
+        #expect(pending.map(\.kind) == [.delete])
+        #expect(pending.first?.baseVersion == nil)
+        try await sut.setVersions("local", [id: 2])
+        var conflicts = sut.syncConflictCounts("local").makeAsyncIterator()
+        #expect(await conflicts.next() == 0)
+    }
 }
 
 struct TaskCachePendingChangeTests {
@@ -135,12 +171,81 @@ struct TaskCachePendingChangeTests {
         let change = try #require(try await sut.pendingChanges("local").first)
         let created = TaskItem(id: UUID(), title: "Offline", priority: .low)
 
-        try await sut.settle("local", change, .created(created))
+        try await sut.settle("local", change, .created(created, version: 1))
 
         #expect(try await sut.pendingChanges("local").isEmpty)
         #expect(try await sut.tasks("local") == [created])
         let resolved = try await sut.resolve("local", task.id)
         #expect(resolved == ResolvedTaskID(id: created.id, hasPendingChange: false))
+    }
+
+    @Test("""
+        Given a recorded server version,
+        When the task is updated offline, its version moves on and it is updated again,
+        Then the change keeps the first version as its base
+        """)
+    func mergedChangeKeepsFirstBaseVersion() async throws {
+        let sut = TaskCacheClient.inMemory()
+        let other = TaskItem(id: UUID(), title: "Other", priority: .low)
+        try await sut.setVersions("local", [task.id: 3, other.id: 7])
+        try await sut.enqueue("local", .update(task))
+        try await sut.setVersions("local", [task.id: 4])
+        var edited = task
+        edited.title = "Edited"
+        try await sut.enqueue("local", .update(edited))
+        try await sut.enqueue("local", .delete(other.id))
+        try await sut.enqueue("local", .create(TaskItem(id: UUID(), title: "New", priority: .low)))
+
+        let pending = try await sut.pendingChanges("local")
+
+        #expect(pending.map(\.baseVersion) == [3, 7, nil])
+        #expect(pending.first?.task?.title == "Edited")
+    }
+
+    @Test("""
+        Given a queued update edited while being sent,
+        When it settles as updated with the server's new version,
+        Then the edit stays queued with that version as its base, which is also recorded
+        """)
+    func updateEditedInFlightTakesNewBase() async throws {
+        let sut = TaskCacheClient.inMemory()
+        try await sut.replaceAll("local", [task])
+        try await sut.setVersions("local", [task.id: 1])
+        try await sut.enqueue("local", .update(task))
+        let change = try #require(try await sut.pendingChanges("local").first)
+        var edited = task
+        edited.title = "Edited"
+        try await sut.enqueue("local", .update(edited))
+
+        try await sut.settle("local", change, .updated(task, version: 2))
+
+        let pending = try await sut.pendingChanges("local")
+        #expect(pending.map(\.baseVersion) == [2])
+        #expect(pending.first?.task?.title == "Edited")
+        try await sut.enqueue("local", .delete(task.id))
+        #expect(try await sut.pendingChanges("local").map(\.baseVersion) == [2])
+    }
+
+    @Test("""
+        Given a queued update and an observer of the conflict count,
+        When the update settles as a conflict and conflicts are then cleared,
+        Then the change is removed and the count goes 0, 1, 0
+        """)
+    func conflictDropsChangeAndIsCountedUntilCleared() async throws {
+        let sut = TaskCacheClient.inMemory()
+        try await sut.replaceAll("local", [task])
+        var conflicts = sut.syncConflictCounts("local").makeAsyncIterator()
+        #expect(await conflicts.next() == 0)
+        try await sut.enqueue("local", .update(task))
+        let change = try #require(try await sut.pendingChanges("local").first)
+
+        try await sut.settle("local", change, .conflict)
+
+        #expect(try await sut.pendingChanges("local").isEmpty)
+        #expect(try await sut.tasks("local") == [task])
+        #expect(await conflicts.next() == 1)
+        try await sut.clearSyncConflicts("local")
+        #expect(await conflicts.next() == 0)
     }
 
     @Test("""

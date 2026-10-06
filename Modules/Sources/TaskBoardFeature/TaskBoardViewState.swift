@@ -94,6 +94,8 @@ public struct TaskBoardViewState: Equatable {
     public var reloadErrorMessage: String?
     /// "N changes waiting to sync"; `nil` when everything is synced.
     public var pendingSyncMessage: String?
+    /// "N offline changes weren't applied…" (server wins); `nil` when there are none to report.
+    public var syncConflictMessage: String?
     public var navigationPath: [TaskBoardRoute]
     public var isDetailDirty: Bool
     public var isDiscardConfirmationPresented: Bool
@@ -114,6 +116,7 @@ public struct TaskBoardViewState: Equatable {
     public var openDetailHint: String
     public var deleteTitle: String
     public var undoTitle: String
+    public var syncConflictDismissTitle: String
     public var searchPrompt: String
     public var sortTitle: String
     public var sortOptions: [TaskBoardSortOption]
@@ -129,6 +132,7 @@ public struct TaskBoardViewState: Equatable {
         rows: [TaskBoardRowState] = [],
         reloadErrorMessage: String? = nil,
         pendingSyncMessage: String? = nil,
+        syncConflictMessage: String? = nil,
         navigationPath: [TaskBoardRoute] = [],
         isDetailDirty: Bool = false,
         isDiscardConfirmationPresented: Bool = false,
@@ -147,6 +151,7 @@ public struct TaskBoardViewState: Equatable {
         openDetailHint: String = L10n.TaskBoard.openDetailHint,
         deleteTitle: String = L10n.TaskBoard.delete,
         undoTitle: String = L10n.TaskBoard.undo,
+        syncConflictDismissTitle: String = L10n.TaskBoard.syncConflictDismiss,
         searchPrompt: String = L10n.TaskBoard.searchPrompt,
         sortTitle: String = L10n.TaskBoard.sort,
         sortOptions: [TaskBoardSortOption] = [
@@ -165,6 +170,7 @@ public struct TaskBoardViewState: Equatable {
         self.rows = rows
         self.reloadErrorMessage = reloadErrorMessage
         self.pendingSyncMessage = pendingSyncMessage
+        self.syncConflictMessage = syncConflictMessage
         self.navigationPath = navigationPath
         self.isDetailDirty = isDetailDirty
         self.isDiscardConfirmationPresented = isDiscardConfirmationPresented
@@ -183,6 +189,7 @@ public struct TaskBoardViewState: Equatable {
         self.openDetailHint = openDetailHint
         self.deleteTitle = deleteTitle
         self.undoTitle = undoTitle
+        self.syncConflictDismissTitle = syncConflictDismissTitle
         self.searchPrompt = searchPrompt
         self.sortTitle = sortTitle
         self.sortOptions = sortOptions

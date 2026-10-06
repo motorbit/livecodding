@@ -17,10 +17,10 @@ extension TaskClient {
             @Dependency(\.taskNetworkClient) var network
             let scope = cacheScope()
             try await syncPendingChanges(scope: scope)
-            let tasks = try await mapErrors {
-                try await network.fetchTasks().map { try $0.toDomain() }
-            }
+            let dtos = try await mapErrors { try await network.fetchTasks() }
+            let tasks = try await mapErrors { try dtos.map { try $0.toDomain() } }
             await updateCache { cache in try await cache.replaceAll(scope, tasks) }
+            await recordVersions(dtos, scope: scope)
             return await applyingPendingChanges(to: tasks, scope: scope)
         },
         cachedTasks: {
@@ -48,10 +48,10 @@ extension TaskClient {
             // answer was lost is then replayed by the sync instead of duplicated.
             let localID = uuid()
             do {
-                let task = try await mapErrors {
-                    try await network.createTask(TaskDraftDTO(draft), localID).toDomain()
-                }
+                let dto = try await mapErrors { try await network.createTask(TaskDraftDTO(draft), localID) }
+                let task = try await mapErrors { try dto.toDomain() }
                 await updateCache { cache in try await cache.upsert(scope, task) }
+                await recordVersions([dto], scope: scope)
                 return task
             } catch TaskClientError.unavailable {
                 let task = TaskItem(
@@ -86,10 +86,10 @@ extension TaskClient {
                 dueDate: task.dueDate
             )
             do {
-                let saved = try await mapErrors {
-                    try await network.updateTask(TaskDTO(request)).toDomain()
-                }
+                let dto = try await mapErrors { try await network.updateTask(TaskDTO(request), nil) }
+                let saved = try await mapErrors { try dto.toDomain() }
                 await updateCache { cache in try await cache.upsert(scope, saved) }
+                await recordVersions([dto], scope: scope)
                 return TaskItem(
                     id: task.id,
                     title: saved.title,
@@ -113,7 +113,7 @@ extension TaskClient {
             }
             do {
                 try await mapErrors {
-                    try await network.deleteTask(resolved.id)
+                    try await network.deleteTask(resolved.id, nil)
                 }
                 await updateCache { cache in try await cache.delete(scope, resolved.id) }
             } catch TaskClientError.unavailable {
@@ -123,6 +123,17 @@ extension TaskClient {
         pendingSyncCounts: {
             @Dependency(\.taskCacheClient) var cache
             return cache.pendingChangeCounts(cacheScope())
+        },
+        syncConflictCounts: {
+            @Dependency(\.taskCacheClient) var cache
+            return cache.syncConflictCounts(cacheScope())
+        },
+        dismissSyncConflicts: {
+            @Dependency(\.taskCacheClient) var cache
+            let scope = cacheScope()
+            try await logCacheErrors("taskCache.write") {
+                try await cache.clearSyncConflicts(scope)
+            }
         }
     )
 
@@ -146,6 +157,17 @@ extension TaskClient {
             @Dependency(\.logger) var logger
             logger.error(error, ["operation": "taskCache.write"])
         }
+    }
+
+    /// The server's versions, the base for changes queued later (see `TaskClient+Sync`). Online
+    /// writes don't send them: they're last write wins.
+    static func recordVersions(_ tasks: [TaskDTO], scope: String) async {
+        let versions = Dictionary(
+            tasks.compactMap { task in task.version.map { (task.id, $0) } },
+            uniquingKeysWith: { _, last in last }
+        )
+        guard !versions.isEmpty else { return }
+        await updateCache { cache in try await cache.setVersions(scope, versions) }
     }
 
     static func logCacheErrors<Value>(
@@ -176,6 +198,8 @@ extension TaskClient {
             switch error {
             case .badRequest: throw TaskClientError.validation
             case .notFound: throw TaskClientError.notFound
+            // Only conditional requests (the sync) get it, and the sync handles it.
+            case .conflict: throw error
             case .serverError, .transport: throw TaskClientError.unavailable
             }
         } catch {

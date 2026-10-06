@@ -32,6 +32,9 @@ public final class TaskBoardViewModel: ObservableObject {
     var undoTask: Task<Void, Never>?
     /// Observes the number of changes waiting to sync, from the first appearance on.
     var pendingSyncTask: Task<Void, Never>?
+    /// Observes offline changes the server didn't take (server wins), from the first appearance on.
+    var syncConflictTask: Task<Void, Never>?
+    var dismissConflictsTask: Task<Void, Never>?
     /// Reloads (which syncs first) when the device gets a network path back.
     var connectivityTask: Task<Void, Never>?
     /// Waits out the backoff, then reloads, while changes are waiting to sync.
@@ -81,6 +84,8 @@ public final class TaskBoardViewModel: ObservableObject {
         loadTask?.cancel()
         undoTask?.cancel()
         pendingSyncTask?.cancel()
+        syncConflictTask?.cancel()
+        dismissConflictsTask?.cancel()
         connectivityTask?.cancel()
         syncRetryTask?.cancel()
         rowTasks.values.forEach { $0.cancel() }
@@ -142,6 +147,8 @@ public final class TaskBoardViewModel: ObservableObject {
             rebuildRows()
         case .undoTapped:
             undoPendingDeletion()
+        case .syncConflictDismissed:
+            dismissSyncConflicts()
         case .navigationPathChanged(let path):
             guard path != state.navigationPath else { return }
             if path.isEmpty, detailViewModel != nil, state.isDetailDirty {
@@ -179,6 +186,7 @@ public final class TaskBoardViewModel: ObservableObject {
         case deletionSucceeded(UUID)
         case deletionFailed(UUID)
         case pendingSyncCountChanged(Int)
+        case syncConflictCountChanged(Int)
         case connectivityChanged(isOnline: Bool)
         case syncRetryDue
     }
@@ -245,6 +253,8 @@ public final class TaskBoardViewModel: ObservableObject {
             } else {
                 scheduleSyncRetry()
             }
+        case .syncConflictCountChanged(let count):
+            state.syncConflictMessage = count > 0 ? L10n.TaskBoard.syncConflictCount(count, locale: locale) : nil
         case .connectivityChanged(let isOnline):
             let wasOffline = self.isOnline == false
             self.isOnline = isOnline
@@ -287,6 +297,18 @@ public final class TaskBoardViewModel: ObservableObject {
         }
     }
 
+    /// Hides the banner now; the observed count follows once the cache forgets the conflicts.
+    /// A failure is logged by the client and only means the banner comes back next launch.
+    private func dismissSyncConflicts() {
+        guard state.syncConflictMessage != nil else { return }
+        state.syncConflictMessage = nil
+        let client = taskClient
+        dismissConflictsTask?.cancel()
+        dismissConflictsTask = Task {
+            try? await client.dismissSyncConflicts()
+        }
+    }
+
     private func cancelSyncRetry() {
         syncRetryTask?.cancel()
         syncRetryTask = nil
@@ -295,12 +317,20 @@ public final class TaskBoardViewModel: ObservableObject {
 
     private func observeSyncState() {
         let counts = taskClient.pendingSyncCounts()
+        let conflicts = taskClient.syncConflictCounts()
         let paths = networkMonitor.isOnlineUpdates()
         pendingSyncTask?.cancel()
         pendingSyncTask = Task { [weak self] in
             for await count in counts {
                 guard !Task.isCancelled, let self else { return }
                 self.handle(.pendingSyncCountChanged(count))
+            }
+        }
+        syncConflictTask?.cancel()
+        syncConflictTask = Task { [weak self] in
+            for await count in conflicts {
+                guard !Task.isCancelled, let self else { return }
+                self.handle(.syncConflictCountChanged(count))
             }
         }
         connectivityTask?.cancel()

@@ -16,6 +16,7 @@ private func makeDependencies(_ dependencies: inout DependencyValues) {
     dependencies.taskClient.cachedTasks = { [] }
     dependencies.taskClient.updateTask = { $0 }
     dependencies.taskClient.pendingSyncCounts = { AsyncStream { $0.finish() } }
+    dependencies.taskClient.syncConflictCounts = { AsyncStream { $0.finish() } }
     dependencies.networkMonitorClient.isOnlineUpdates = { AsyncStream { $0.finish() } }
 }
 
@@ -1587,6 +1588,36 @@ struct TaskBoardSyncTests {
         zeroContinuation.finish()
         await cleared.pendingSyncTask?.value
         #expect(cleared.state.pendingSyncMessage == nil)
+    }
+
+    @Test("""
+        Given offline changes the server didn't take,
+        When the conflict count is reported and the banner is dismissed,
+        Then the banner shows the count, hides at once and the conflicts are cleared once
+        """)
+    func syncConflictBannerShowsAndDismisses() async {
+        let locale = Locale(identifier: "en_US")
+        let dismissals = LockIsolated(0)
+        let (counts, continuation) = AsyncStream<Int>.makeStream()
+        let sut = withDependencies {
+            makeDependencies(&$0)
+            $0.locale = locale
+            $0.taskClient.syncConflictCounts = { counts }
+            $0.taskClient.dismissSyncConflicts = { dismissals.withValue { $0 += 1 } }
+        } operation: { TaskBoardViewModel() }
+
+        sut.trigger(.onAppear)
+        continuation.yield(1)
+        continuation.finish()
+        await sut.syncConflictTask?.value
+        #expect(sut.state.syncConflictMessage == L10n.TaskBoard.syncConflictCount(1, locale: locale))
+        #expect(sut.state.syncConflictMessage == "1 offline change wasn't applied: the task changed on the server")
+
+        sut.trigger(.syncConflictDismissed)
+        sut.trigger(.syncConflictDismissed)
+        #expect(sut.state.syncConflictMessage == nil)
+        await sut.dismissConflictsTask?.value
+        #expect(dismissals.value == 1)
     }
 
     @Test("""

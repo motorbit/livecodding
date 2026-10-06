@@ -292,6 +292,49 @@ func TestDeleteTask(t *testing.T) {
 	wantError(t, do(t, h, http.MethodDelete, "/tasks/"+seedID, ""), http.StatusNotFound)
 }
 
+func TestIfMatch(t *testing.T) {
+	h, _ := newTestHandler(t)
+	send := func(method, ifMatch, body string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(method, "/tasks/"+seedID, strings.NewReader(body))
+		if ifMatch != "" {
+			req.Header.Set("If-Match", ifMatch)
+		}
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		return rec
+	}
+	body := func(title string) string {
+		return `{"id":"` + seedID + `","title":"` + title + `","notes":"","priority":"Low","done":false,"version":99}`
+	}
+
+	list := decode[[]task.Task](t, do(t, h, http.MethodGet, "/tasks", ""))
+	if list[0].Version != 1 {
+		t.Fatalf("seed version = %d, want 1", list[0].Version)
+	}
+	rec := send(http.MethodPut, "1", body("Mine"))
+	wantStatus(t, rec, http.StatusOK)
+	if got := decode[task.Task](t, rec); got.Version != 2 {
+		t.Fatalf("version = %d, want 2", got.Version)
+	}
+	wantError(t, send(http.MethodPut, "1", body("Stale")), http.StatusPreconditionFailed)
+	wantError(t, send(http.MethodDelete, `"1"`, ""), http.StatusPreconditionFailed)
+	if got := decode[[]task.Task](t, do(t, h, http.MethodGet, "/tasks", ""))[0]; got.Title != "Mine" {
+		t.Fatalf("stale write applied: %+v", got)
+	}
+	rec = send(http.MethodPut, `"2"`, body("Quoted"))
+	wantStatus(t, rec, http.StatusOK)
+	rec = send(http.MethodPut, "*", body("Any"))
+	wantStatus(t, rec, http.StatusOK)
+	if got := decode[task.Task](t, rec); got.Version != 4 {
+		t.Fatalf("version = %d, want 4", got.Version)
+	}
+	for _, bad := range []string{"abc", "0", "-1", `W/"4"`} {
+		wantError(t, send(http.MethodPut, bad, body("x")), http.StatusBadRequest)
+		wantError(t, send(http.MethodDelete, bad, ""), http.StatusBadRequest)
+	}
+	wantStatus(t, send(http.MethodDelete, "4", ""), http.StatusNoContent)
+}
+
 func TestDeleteTaskInvalidUUIDIsNotFound(t *testing.T) {
 	h, _ := newTestHandler(t)
 	wantError(t, do(t, h, http.MethodDelete, "/tasks/xyz", ""), http.StatusNotFound)
@@ -316,14 +359,14 @@ func (failingStore) List(context.Context) ([]task.Task, error) { return nil, err
 func (failingStore) Create(context.Context, task.Task) (task.Task, error) {
 	return task.Task{}, errBoom
 }
-func (failingStore) Update(context.Context, task.Task) (task.Task, error) {
+func (failingStore) Update(context.Context, task.Task, int) (task.Task, error) {
 	return task.Task{}, errBoom
 }
 func (failingStore) CreateOnce(context.Context, string, task.Task) (task.Task, bool, error) {
 	return task.Task{}, false, errBoom
 }
-func (failingStore) Delete(context.Context, string) error { return errBoom }
-func (failingStore) Close() error                         { return nil }
+func (failingStore) Delete(context.Context, string, int) error { return errBoom }
+func (failingStore) Close() error                              { return nil }
 
 func TestStoreFailuresAre500(t *testing.T) {
 	h := NewHandler(Config{Store: failingStore{}})

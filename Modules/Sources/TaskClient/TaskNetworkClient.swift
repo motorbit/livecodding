@@ -15,8 +15,10 @@ struct TaskNetworkClient: Sendable {
     /// `idempotencyKey` makes the call safe to repeat: a server that has already created a task
     /// for the key returns that task instead of creating another.
     var createTask: @Sendable (_ body: TaskDraftDTO, _ idempotencyKey: UUID) async throws -> TaskDTO
-    var updateTask: @Sendable (_ body: TaskDTO) async throws -> TaskDTO
-    var deleteTask: @Sendable (_ id: UUID) async throws -> Void
+    /// With `ifMatch`, the server applies the change only to that version of the task and throws
+    /// `.conflict` otherwise. `nil` means last write wins.
+    var updateTask: @Sendable (_ body: TaskDTO, _ ifMatch: Int?) async throws -> TaskDTO
+    var deleteTask: @Sendable (_ id: UUID, _ ifMatch: Int?) async throws -> Void
 }
 
 /// Failures a Task API can report. Mirrors HTTP 400 / 404 / 5xx, plus `transport` when there's
@@ -24,6 +26,8 @@ struct TaskNetworkClient: Sendable {
 enum TaskNetworkError: Error, Equatable, Sendable {
     case badRequest
     case notFound
+    /// HTTP 412: the task has a version other than `ifMatch`.
+    case conflict
     case serverError
     case transport
 }
@@ -63,8 +67,8 @@ extension TaskNetworkClient {
         return Self(
             fetchTasks: { try await backend().fetchTasks() },
             createTask: { try await backend().createTask($0, $1) },
-            updateTask: { try await backend().updateTask($0) },
-            deleteTask: { try await backend().deleteTask($0) }
+            updateTask: { try await backend().updateTask($0, $1) },
+            deleteTask: { try await backend().deleteTask($0, $1) }
         )
     }
 }

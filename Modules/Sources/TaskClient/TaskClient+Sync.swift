@@ -3,9 +3,11 @@ import Foundation
 import Logging
 
 /// Offline changes: queueing, sending the queue and showing queued changes on top of the saved
-/// list. Conflict policy is last write wins: a queued change is sent as is, whatever the server
-/// has. A change the server refuses (validation or not found) is dropped and logged; the fetch that
-/// follows the sync brings back the server's version.
+/// list. Conflict policy is server wins: a queued update or delete carries the version it was
+/// made on (`If-Match`); if the task has changed on the server since, the change is dropped,
+/// logged and counted for the board. A change the server refuses (validation or not found) is
+/// dropped and logged too. Either way the fetch that follows the sync brings back the server's
+/// version.
 extension TaskClient {
     /// The most passes one sync makes. A change edited while being sent stays queued for another
     /// pass; the limit keeps a user who edits faster than the server answers from pinning the sync.
@@ -50,14 +52,15 @@ extension TaskClient {
             switch change.kind {
             case .create:
                 guard let task = change.task else { return rejected(change, reason: "unreadable") }
-                let created = try await mapErrors {
+                let createdDTO = try await mapErrors {
                     try await network.createTask(TaskDraftDTO(TaskDraft(
                         title: task.title,
                         notes: task.notes,
                         priority: task.priority,
                         dueDate: task.dueDate
-                    )), change.taskID).toDomain()
+                    )), change.taskID)
                 }
+                let created = try createdDTO.toDomain()
                 var desired = created
                 desired.title = task.title
                 desired.notes = task.notes
@@ -67,26 +70,36 @@ extension TaskClient {
                 // A create can't carry completion, and a replayed key returns the task as first
                 // stored, without edits queued since; either way the queued values follow as an
                 // update.
-                guard TaskDTO(desired) != TaskDTO(created) else { return .created(created) }
+                guard TaskDTO(desired) != TaskDTO(created) else {
+                    return .created(created, version: createdDTO.version)
+                }
                 do {
-                    return .created(try await mapErrors {
-                        try await network.updateTask(TaskDTO(desired)).toDomain()
-                    })
+                    let updated = try await mapErrors { try await network.updateTask(TaskDTO(desired), nil) }
+                    return .created(try updated.toDomain(), version: updated.version)
                 } catch is TaskClientError {
                     // The task exists on the server now: record it and leave the values queued.
-                    return .createdNeedingUpdate(created)
+                    return .createdNeedingUpdate(created, version: createdDTO.version)
                 }
             case .update:
                 guard let task = change.task else { return rejected(change, reason: "unreadable") }
-                return .updated(try await mapErrors {
-                    try await network.updateTask(TaskDTO(task)).toDomain()
-                })
+                let updated = try await mapErrors {
+                    try await network.updateTask(TaskDTO(task), change.baseVersion)
+                }
+                return .updated(try updated.toDomain(), version: updated.version)
             case .delete:
                 // Created and deleted offline: the server never knew it.
                 guard !change.isLocal else { return .deleted }
-                try await mapErrors { try await network.deleteTask(change.taskID) }
+                try await mapErrors { try await network.deleteTask(change.taskID, change.baseVersion) }
                 return .deleted
             }
+        } catch TaskNetworkError.conflict {
+            if let applied = try await alreadyApplied(change) { return applied }
+            @Dependency(\.logger) var logger
+            logger.warning("Dropped a queued change: the task changed on the server", [
+                "operation": "taskSync.conflict",
+                "kind": change.kind.rawValue,
+            ])
+            return .conflict
         } catch TaskClientError.validation {
             return rejected(change, reason: "validation")
         } catch TaskClientError.notFound {
@@ -95,6 +108,20 @@ extension TaskClient {
             case .create, .update: return rejected(change, reason: "notFound")
             }
         }
+    }
+
+    /// An update queued after an online attempt whose answer was lost may already be on the
+    /// server, as the version after its base. If the server's task has exactly the queued values,
+    /// the change counts as applied rather than as a conflict.
+    private static func alreadyApplied(_ change: PendingChange) async throws -> SyncOutcome? {
+        guard change.kind == .update, let task = change.task else { return nil }
+        @Dependency(\.taskNetworkClient) var network
+        let onServer = try await mapErrors { try await network.fetchTasks() }
+            .first { $0.id == change.taskID }
+        guard var values = onServer else { return nil }
+        values.version = nil
+        guard values == TaskDTO(task), let onServer else { return nil }
+        return .updated(try onServer.toDomain(), version: onServer.version)
     }
 
     private static func rejected(_ change: PendingChange, reason: String) -> SyncOutcome {

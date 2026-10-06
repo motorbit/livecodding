@@ -18,6 +18,8 @@ struct TaskCacheClient: Sendable {
     /// full list, so a partial list is never mistaken for the saved one.
     var upsert: @Sendable (_ scope: String, _ task: TaskItem) async throws -> Void
     var delete: @Sendable (_ scope: String, _ id: UUID) async throws -> Void
+    /// Records the server's version of tasks, the base a change queued later is checked against.
+    var setVersions: @Sendable (_ scope: String, _ versions: [UUID: Int]) async throws -> Void
     /// Removes everything, in every scope, including changes not synced yet.
     var clear: @Sendable () async throws -> Void
 
@@ -35,6 +37,10 @@ struct TaskCacheClient: Sendable {
     var settle: @Sendable (_ scope: String, _ change: PendingChange, _ outcome: SyncOutcome) async throws -> Void
     /// The number of queued changes: the current value, then every change.
     var pendingChangeCounts: @Sendable (_ scope: String) -> AsyncStream<Int> = { _ in AsyncStream { $0.finish() } }
+    /// The number of queued changes dropped because the task changed on the server, not yet
+    /// dismissed: the current value, then every change.
+    var syncConflictCounts: @Sendable (_ scope: String) -> AsyncStream<Int> = { _ in AsyncStream { $0.finish() } }
+    var clearSyncConflicts: @Sendable (_ scope: String) async throws -> Void
     /// Runs `body` while no other `serialized` body runs on this database, so one change is never
     /// sent twice by overlapping syncs.
     var serialized: @Sendable (_ body: @Sendable () async throws -> Void) async throws -> Void
@@ -55,6 +61,9 @@ struct PendingChange: Equatable, Sendable {
     /// Bumped by every merge; `settle` keeps the change if it moved on while being sent.
     var revision: Int
     var task: TaskItem?
+    /// The server version the change was made on, sent as `If-Match`; `nil` when unknown (a task
+    /// created offline, or a server without versions), then the change is sent unconditionally.
+    var baseVersion: Int?
 }
 
 enum LocalChange: Equatable, Sendable {
@@ -63,16 +72,21 @@ enum LocalChange: Equatable, Sendable {
     case delete(UUID)
 }
 
+/// `version` is the server's version of the returned task (`nil` from a server without versions).
+/// `settle` records it, and it becomes the base of a change still queued for that task.
 enum SyncOutcome: Equatable, Sendable {
     /// The server assigned this task (with its own id) to a local create.
-    case created(TaskItem)
+    case created(TaskItem, version: Int?)
     /// Created, but the server's task still lacks part of the local values (completion); the
     /// change stays queued as an update of the server's task.
-    case createdNeedingUpdate(TaskItem)
-    case updated(TaskItem)
+    case createdNeedingUpdate(TaskItem, version: Int?)
+    case updated(TaskItem, version: Int?)
     case deleted
     /// The server refused the change (validation, or the task no longer exists); it is dropped.
     case rejected
+    /// The task changed on the server since `baseVersion`; the server wins and the change is
+    /// dropped and counted in `syncConflictCounts`.
+    case conflict
 }
 
 struct ResolvedTaskID: Equatable, Sendable {
@@ -131,12 +145,21 @@ extension TaskCacheClient {
                     try TaskRecord.deleteOne(db, key: ["scope": scope, "id": id.uuidString])
                 }
             },
+            setVersions: { scope, versions in
+                try await database.queue().write { db in
+                    for (id, version) in versions {
+                        try TaskVersion.record(version, for: id, in: scope, db)
+                    }
+                }
+            },
             clear: {
                 _ = try await database.queue().write { db in
                     try TaskRecord.deleteAll(db)
                     try CachedScope.deleteAll(db)
                     try PendingChangeRecord.deleteAll(db)
                     try TaskAlias.deleteAll(db)
+                    try TaskVersion.deleteAll(db)
+                    try SyncConflict.deleteAll(db)
                 }
             },
             pendingChanges: { scope in
@@ -164,24 +187,14 @@ extension TaskCacheClient {
                 }
             },
             pendingChangeCounts: { scope in
-                AsyncStream { continuation in
-                    let observation = Task {
-                        guard let queue = try? await database.queue() else {
-                            continuation.finish()
-                            return
-                        }
-                        let counts = ValueObservation
-                            .tracking { db in try PendingChangeRecord.all(in: scope).fetchCount(db) }
-                            .removeDuplicates()
-                            .values(in: queue)
-                        do {
-                            for try await count in counts {
-                                continuation.yield(count)
-                            }
-                        } catch {}
-                        continuation.finish()
-                    }
-                    continuation.onTermination = { _ in observation.cancel() }
+                database.counts { db in try PendingChangeRecord.all(in: scope).fetchCount(db) }
+            },
+            syncConflictCounts: { scope in
+                database.counts { db in try SyncConflict.filter(Column("scope") == scope).fetchCount(db) }
+            },
+            clearSyncConflicts: { scope in
+                _ = try await database.queue().write { db in
+                    try SyncConflict.filter(Column("scope") == scope).deleteAll(db)
                 }
             },
             serialized: { body in
@@ -221,6 +234,30 @@ final class TaskCacheDatabase: Sendable {
             try Self.migrator.migrate(queue)
             opened = queue
             return queue
+        }
+    }
+
+    /// `count` now and after every change it observes, without repeats; finishes if the database
+    /// can't be opened.
+    func counts(_ count: @escaping @Sendable (Database) throws -> Int) -> AsyncStream<Int> {
+        AsyncStream { continuation in
+            let observation = Task {
+                guard let queue = try? await self.queue() else {
+                    continuation.finish()
+                    return
+                }
+                let counts = ValueObservation
+                    .tracking(count)
+                    .removeDuplicates()
+                    .values(in: queue)
+                do {
+                    for try await count in counts {
+                        continuation.yield(count)
+                    }
+                } catch {}
+                continuation.finish()
+            }
+            continuation.onTermination = { _ in observation.cancel() }
         }
     }
 
@@ -275,6 +312,21 @@ final class TaskCacheDatabase: Sendable {
                 table.column("localID", .text).notNull()
                 table.column("serverID", .text).notNull()
                 table.primaryKey(["scope", "localID"])
+            }
+        }
+        migrator.registerMigration("v3-task-versions") { db in
+            try db.create(table: TaskVersion.databaseTableName) { table in
+                table.column("scope", .text).notNull()
+                table.column("id", .text).notNull()
+                table.column("version", .integer).notNull()
+                table.primaryKey(["scope", "id"])
+            }
+            try db.alter(table: PendingChangeRecord.databaseTableName) { table in
+                table.add(column: "baseVersion", .integer)
+            }
+            try db.create(table: SyncConflict.databaseTableName) { table in
+                table.autoIncrementedPrimaryKey("sequence")
+                table.column("scope", .text).notNull()
             }
         }
         return migrator

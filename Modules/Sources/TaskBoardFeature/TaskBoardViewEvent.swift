@@ -13,6 +13,8 @@ public enum TaskBoardViewEvent {
     case rowRetryTapped(UUID)
     case deleteSwiped(UUID)
     case undoTapped
+    /// Hides the banner about offline changes the server didn't take.
+    case syncConflictDismissed
     case searchTextChanged(String)
     /// The scene became active or the system day changed; relative due text is recomputed.
     case dayMayHaveChanged

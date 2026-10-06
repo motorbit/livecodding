@@ -9,9 +9,12 @@ struct TaskDTO: Codable, Equatable, Sendable {
     var priority: PriorityDTO
     var done: Bool
     var dueDate: String?
+    /// The server's revision of the task: 1 on create, +1 on every update. `nil` from a server
+    /// without versioning, and in request bodies (the server ignores it there).
+    var version: Int?
 
     enum CodingKeys: String, CodingKey {
-        case id, title, notes, priority, done
+        case id, title, notes, priority, done, version
         case dueDate = "due_date"
     }
 }
